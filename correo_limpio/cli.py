@@ -3,16 +3,22 @@ import json
 import sys
 
 from correo_limpio.config import load_config
+from correo_limpio.keychain import CLOUDFLARE_TOKEN, REFRESH_TOKEN, MacKeychain
 
 
 def _status() -> int:
     cfg = load_config()
+    keychain = MacKeychain()
     print(json.dumps({
         "config_dir": str(cfg.config_dir),
         "state_dir": str(cfg.state_dir),
         "client_id_present": cfg.client_id is not None,
         "max_per_run": cfg.max_per_run,
         "inbox_lookback_days": cfg.inbox_lookback_days,
+        "credentials": {
+            "graph": keychain.get(REFRESH_TOKEN) is not None,
+            "cloudflare": keychain.get(CLOUDFLARE_TOKEN) is not None,
+        },
     }, ensure_ascii=False, indent=2))
     return 0
 
