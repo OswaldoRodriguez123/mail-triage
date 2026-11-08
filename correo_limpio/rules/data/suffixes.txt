@@ -1,0 +1,11 @@
+# Sufijos compuestos para calcular el dominio registrable.
+com.mx
+com.br
+com.ar
+com.co
+com.pe
+com.es
+co.uk
+org.mx
+gob.mx
+com.au

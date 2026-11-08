@@ -1,0 +1,13 @@
+# TLDs baratos que casi no se usan para correo legítimo.
+zip
+mov
+top
+xyz
+click
+link
+live
+shop
+work
+support
+fit
+rest
