@@ -4,7 +4,7 @@ from pathlib import Path
 from mail_triage.classifier import ClefDecision, refine
 from mail_triage.config import Config
 from mail_triage.evidence import from_message, registrable_domain
-from mail_triage.graph import INBOX
+from mail_triage.providers.base import INBOX
 from mail_triage.report import ReportItem, build_report, save
 
 CLEF_SUMMARY = "{category} fraude={fraud:.2f} esperado={expected:.2f}"

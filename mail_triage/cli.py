@@ -10,6 +10,8 @@ from mail_triage.classifier import ClefClient
 from mail_triage.config import load_config
 from mail_triage.graph import GraphClient, GraphError
 from mail_triage.http import UrllibHttp
+from mail_triage.providers.base import ProviderError
+from mail_triage.providers.factory import get_provider
 from mail_triage.keychain import (
     CLOUDFLARE_ACCOUNT_ID,
     CLOUDFLARE_TOKEN,
@@ -62,10 +64,14 @@ def build_context(args) -> SimpleNamespace:
     account_id = keychain.get(CLOUDFLARE_ACCOUNT_ID)
     token = keychain.get(CLOUDFLARE_TOKEN)
     clef = ClefClient(http, account_id, token) if account_id and token else None
+    provider_name = getattr(args, "provider", None) or "outlook"
+    graph_client = GraphClient(http, auth.access_token)
+    provider = get_provider(provider_name, graph_client)
     return SimpleNamespace(
         cfg=cfg,
         auth=auth,
-        graph=GraphClient(http, auth.access_token),
+        graph=graph_client,
+        provider=provider,
         store=store,
         ruleset=RuleSet.load(Path(__file__).resolve().parent / "rules" / "data"),
         clef=clef,
@@ -100,13 +106,13 @@ def _login(args) -> int:
 
 def _scan(args) -> int:
     context = build_context(args)
-    rescued = rescue_allowed(context.graph, context.store)
+    rescued = rescue_allowed(context.provider, context.store)
     if rescued:
         print(f"Rescatados automáticamente a Bandeja: {len(rescued)}.")
     max_items = None if args.all else (args.max if args.max is not None else context.cfg.max_per_run)
     report, code = scan(
         context.cfg,
-        context.graph,
+        context.provider,
         context.store,
         context.ruleset,
         context.clef,
@@ -141,7 +147,7 @@ def _purge(args) -> int:
         print(f"Selección inválida: {exc}", file=sys.stderr)
         return 2
 
-    result = purge(context.cfg, context.graph, context.store, report, args.code, selection)
+    result = purge(context.cfg, context.provider, context.store, report, args.code, selection)
     if not result.moved and not result.failed and not result.aborted:
         print("Código inválido o expirado; no se movió nada.", file=sys.stderr)
         return 2
@@ -160,7 +166,7 @@ def _undo(args) -> int:
         return 2
     context = build_context(args)
     report = load(args.run, Path(context.cfg.state_dir) / "runs")
-    result = undo(context.cfg, context.graph, context.store, report, message_n=args.message)
+    result = undo(context.cfg, context.provider, context.store, report, message_n=args.message)
     print(f"Movidos de vuelta a No deseados: {len(result.moved)}. Fallidos: {len(result.failed)}.")
     for number, status in result.failed:
         print(f"  {number}: Graph {status}")
@@ -177,7 +183,7 @@ def _feedback(args) -> int:
     try:
         message = feedback(
             context.cfg,
-            context.graph,
+            context.provider,
             context.store,
             report,
             args.n,
@@ -201,12 +207,14 @@ def build_parser() -> argparse.ArgumentParser:
     login.add_argument("--cloudflare", action="store_true", help="guarda credenciales de Cloudflare")
 
     scan_parser = sub.add_parser("scan", help="revisa No deseados sin mover nada")
+    scan_parser.add_argument("--provider", default="outlook", help="proveedor (por defecto outlook)")
     scan_parser.add_argument("--max", type=int, default=None, help="máximo de mensajes")
     scan_parser.add_argument("--all", action="store_true", help="ignora el tope")
     scan_parser.add_argument("--include-reviewed", action="store_true",
                              help="vuelve a mostrar los ya marcados como revisar")
 
     purge_parser = sub.add_parser("purge", help="mueve lo aprobado a Papelera o Bandeja")
+    purge_parser.add_argument("--provider", default="outlook", help="proveedor (por defecto outlook)")
     purge_parser.add_argument("--run", help="run_id del reporte")
     purge_parser.add_argument("--code", help="código de confirmación")
     purge_parser.add_argument("--delete", help="números a borrar, ej. 1,4,7 o 1-3")
@@ -215,10 +223,12 @@ def build_parser() -> argparse.ArgumentParser:
                               help="grupo completo: delete o rescue")
 
     undo_parser = sub.add_parser("undo", help="devuelve mensajes a No deseados")
+    undo_parser.add_argument("--provider", default="outlook", help="proveedor (por defecto outlook)")
     undo_parser.add_argument("--run", help="run_id del reporte")
     undo_parser.add_argument("--message", type=int, help="solo un número")
 
     feedback_parser = sub.add_parser("feedback", help="corrige la clasificación de un mensaje")
+    feedback_parser.add_argument("--provider", default="outlook", help="proveedor (por defecto outlook)")
     feedback_parser.add_argument("run")
     feedback_parser.add_argument("n", type=int)
     verdict = feedback_parser.add_mutually_exclusive_group()
@@ -245,7 +255,7 @@ def main(argv: list[str] | None = None) -> int:
             return _undo(args)
         if args.command == "feedback":
             return _feedback(args)
-    except (AuthError, GraphError) as exc:
+    except (AuthError, GraphError, ProviderError) as exc:
         print(f"Error: {exc}", file=sys.stderr)
         return 1
     return 2

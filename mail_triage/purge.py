@@ -2,6 +2,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 
 from mail_triage.graph import DELETED, INBOX, JUNK, GraphError
+from mail_triage.providers.base import DELETED as PROV_DELETED, INBOX as PROV_INBOX, ProviderError
 
 ABORT_AFTER_FAILURES = 3
 
