@@ -123,18 +123,22 @@ class RuleSet:
 
         score = round(min(score, 1.0), 2)
 
-        if allowed:
-            return Verdict(score, "review", tuple(reasons) or ("dominio permitido",), fraud_signal)
-        if blocked:
+        if blocked and not allowed:
             return Verdict(1.0, "delete", ("dominio bloqueado",), True)
+        if blocked and allowed:
+            return Verdict(score, "review", tuple(reasons) or ("dominio permitido",), fraud_signal)
         if promo_hint:
             return Verdict(score, "review", tuple(reasons) or ("promoción",), fraud_signal)
         if score >= DELETE_THRESHOLD and fraud_signal:
+            if allowed:
+                return Verdict(score, "review", tuple(reasons), fraud_signal)
             return Verdict(score, "delete", tuple(reasons), True)
         if score <= RESCUE_THRESHOLD and not ev.auth.failed and (
-            allow_domains or transactional
+            allowed or transactional
         ):
             return Verdict(score, "rescue", tuple(reasons) or ("correo transaccional",), fraud_signal)
+        if allowed:
+            return Verdict(score, "review", tuple(reasons) or ("dominio permitido",), fraud_signal)
         return Verdict(score, "review", tuple(reasons) or ("sin señales claras",), fraud_signal)
 
     def _suspicious_tld(self, ev: Evidence) -> bool:

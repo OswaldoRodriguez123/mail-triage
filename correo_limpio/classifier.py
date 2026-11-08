@@ -65,6 +65,11 @@ class ClefClient:
 def refine(verdict: Verdict, decision: ClefDecision | None) -> Verdict:
     if verdict.bucket != "review" or decision is None:
         return verdict
+    if getattr(verdict, "locked", False):
+        return verdict
+    reasons_text = " ".join(verdict.reasons or ()).lower()
+    if "permitido" in reasons_text or "promoci" in reasons_text or "veto" in reasons_text:
+        return verdict
     if decision.fraud_prob >= DELETE_FRAUD_PROB:
         return Verdict(
             max(verdict.score, DELETE_FRAUD_PROB),

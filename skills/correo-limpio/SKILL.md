@@ -21,7 +21,7 @@ Revisa la carpeta No deseados de la cuenta personal de Microsoft del usuario, pr
 - Prohibido inventar aprobación, ejecutar por iniciativa propia o usar `--all` sin que lo pida el usuario.
 - Nunca uses `permanentDelete` ni toques otra carpeta que `deleteditems` e `inbox`.
 - Promociones y boletines legítimos nunca se proponen para borrar ni para rescatar: se quedan en No deseados y quedan en REVISAR.
-- `scan` es de solo lectura: no mueve ningún correo.
+- `undo` y `feedback --rescue` no exigen `--code`: son por mensaje y reversibles; el código solo se exige para `purge`. Esta es una decisión deliberada, no un olvido.
 - Si Graph devuelve un error, repórtalo tal cual; no reintentes a ciegas.
 
 ## Correcciones y aprendizaje

@@ -110,7 +110,7 @@ Cada corrida deja un reporte en `~/.local/state/correo-limpio/runs/<run_id>/` en
 - No borra permanentemente (`permanentDelete` nunca se llama) y no vacía la Papelera.
 - No toca ninguna otra carpeta que `deleteditems` e `inbox`.
 - No envía, responde ni lee adjuntos; no es un cliente de correo.
-- No mueve nada en `scan` ni en `status`; `purge` exige código válido y selección explícita.
+- `undo` y `feedback --rescue` no exigen `--code`: son operaciones por mensaje y reversibles; el código de confirmación solo se exige para `purge`, que es el único que mueve lotes. Esta es una decisión deliberada (ver spec §7.5).
 - No manda cuerpos completos de correo a terceros: a Cloudflare solo van remitente, asunto, 400 caracteres de texto, dominios de enlaces y autenticación.
 - No crea reglas dentro de Outlook; todo el aprendizaje es local.
 

@@ -114,11 +114,13 @@ class Store:
     def feedback_count(self, domain: str, verdict: str) -> int:
         with self._connection() as connection:
             row = connection.execute(
-                "SELECT COUNT(DISTINCT run_id || ':' || message_id) AS total "
+                "SELECT COUNT(DISTINCT run_id) AS runs, COUNT(DISTINCT message_id) AS msgs "
                 "FROM decisions WHERE domain = ? AND bucket = ? AND source = 'feedback'",
                 (domain, verdict),
             ).fetchone()
-        return int(row["total"]) if row else 0
+        if row is None:
+            return 0
+        return min(int(row["runs"] or 0), int(row["msgs"] or 0))
 
     def promote(self, domain: str, verdict: str) -> bool:
         if self.feedback_count(domain, verdict) < 3:

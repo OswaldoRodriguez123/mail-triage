@@ -129,6 +129,9 @@ def _purge(args) -> int:
 
     context = build_context(args)
     report = load(args.run, Path(context.cfg.state_dir) / "runs")
+    if not report.code_matches(args.code):
+        print("Código inválido o expirado; no se movió nada.", file=sys.stderr)
+        return 2
     try:
         selection = parse_selection(args.delete, args.rescue, args.group, report=report)
     except ValueError as exc:
@@ -136,6 +139,9 @@ def _purge(args) -> int:
         return 2
 
     result = purge(context.cfg, context.graph, context.store, report, args.code, selection)
+    if not result.moved and not result.failed and not result.aborted:
+        print("Código inválido o expirado; no se movió nada.", file=sys.stderr)
+        return 2
     print(f"Movidos: {len(result.moved)}. Fallidos: {len(result.failed)}.")
     for number, status in result.failed:
         print(f"  {number}: Graph {status}")

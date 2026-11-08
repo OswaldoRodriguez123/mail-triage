@@ -39,6 +39,7 @@ def scan(
     block_rules = {domain for domain, verdict in rules.items() if verdict == "block"}
 
     items: list[ReportItem] = []
+    clef_used = False
     for ev in evidences:
         verdict = ruleset.evaluate(
             ev,
@@ -47,9 +48,11 @@ def scan(
             domain_age_days=ages.get(ev.from_domain),
         )
         clef_label = None
-        if verdict.bucket == "review" and clef is not None:
+        protected = _is_protected(verdict)
+        if verdict.bucket == "review" and clef is not None and not protected:
             decision = clef.evaluate(ev)
             if decision is not None:
+                clef_used = True
                 clef_label = CLEF_SUMMARY.format(
                     category=decision.category,
                     fraud=decision.fraud_prob,
@@ -70,7 +73,7 @@ def scan(
             )
         )
 
-    report, code = build_report(items, has_more, "clef" if clef else "rules", now=now)
+    report, code = build_report(items, has_more, "clef" if clef_used else "rules", now=now)
     save(report, Path(cfg.state_dir) / "runs")
     for item in report.items:
         store.record_seen(item.message_id, report.run_id, item.bucket, now_iso)
@@ -117,6 +120,11 @@ def _days_since(created: str | None, today: date) -> int | None:
         return max((today - date.fromisoformat(created[:10])).days, 0)
     except ValueError:
         return None
+
+
+def _is_protected(verdict) -> bool:
+    text = " ".join(getattr(verdict, "reasons", ()) or ()).lower()
+    return any(marker in text for marker in ("permitido", "promoci", "veto"))
 
 
 def _sender(ev) -> str:

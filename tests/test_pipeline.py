@@ -117,7 +117,7 @@ class PipelineTest(unittest.TestCase):
 
     def test_clef_only_refines_review_band(self):
         self.scan()
-        self.assertEqual(self.clef.calls, 5)  # 8 fixtures - 3 delete/rescue
+        self.assertEqual(self.clef.calls, 4)  # 8 fixtures - 2 delete/rescue - 1 promo locked
 
     def test_duplicate_message_ids_counted_once(self):
         self.graph.messages = [fixtures.netflix_phish(), fixtures.netflix_phish()]
