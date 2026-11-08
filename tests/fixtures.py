@@ -63,10 +63,10 @@ def soda_random():
 def cloud_billing():
     return _msg(
         "m3",
-        "Your monthly cloud invoice is ready",
+        "Your monthly cloud statement is ready",
         "Cloud Provider Billing",
         "billing@cloudprovider.test",
-        "Your invoice for October is available in the billing console. "
+        "Your statement for October is available in the billing console. "
         "No action is required.",
         auth="spf=pass smtp.mailfrom=cloudprovider.test; dkim=pass; dmarc=pass header.from=cloudprovider.test",
     )
