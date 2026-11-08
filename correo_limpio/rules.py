@@ -17,7 +17,11 @@ WEIGHTS = {
     "blocked": 0.25,
 }
 
-PROMO_WORDS = ("off", "sale", "discount", "newsletter", "unsubscribe", "promo", "boletín", "oferta")
+PROMO_WORDS = (
+    "off", "sale", "sales", "discount", "discounts", "newsletter", "unsubscribe",
+    "promo", "promos", "promoción", "promoción", "promociones", "promocion",
+    "boletín", "boletines", "boletin", "oferta", "ofertas", "descuento", "descuentos",
+)
 PROMO_SYMBOLS = ("%",)
 TRANSACTIONAL_WORDS = (
     "receipt", "invoice", "order", "pedido", "factura", "recibo",
@@ -68,8 +72,9 @@ class RuleSet:
         allowed = _matches(ev.from_domain, allow_domains)
         blocked = _matches(ev.from_domain, block_domains)
         haystack = f"{ev.subject} {ev.text}"
-        promo_hint = _contains_any(haystack, PROMO_WORDS) or any(
-            symbol in haystack for symbol in PROMO_SYMBOLS
+        promo_haystack = f"{ev.from_name} {haystack}"
+        promo_hint = _contains_any(promo_haystack, PROMO_WORDS) or any(
+            symbol in promo_haystack for symbol in PROMO_SYMBOLS
         )
         transactional = _contains_any(haystack, TRANSACTIONAL_WORDS)
 
@@ -123,22 +128,33 @@ class RuleSet:
 
         score = round(min(score, 1.0), 2)
 
+        strong_fraud = (
+            bool(brand)
+            or ev.auth.failed
+            or bool(ev.reply_to_domain and ev.reply_to_domain != ev.from_domain)
+            or blocked
+            or self._suspicious_tld(ev)
+        )
+        urgent = _contains_any(haystack, self.urgency)
+        foreign_language = ev.language not in ("es", "en", "unknown")
+
         if blocked and not allowed:
             return Verdict(1.0, "delete", ("dominio bloqueado",), True)
-        if blocked and allowed:
-            return Verdict(score, "review", tuple(reasons) or ("dominio permitido",), fraud_signal)
         if promo_hint:
             return Verdict(score, "review", tuple(reasons) or ("promoción",), fraud_signal)
         if score >= DELETE_THRESHOLD and fraud_signal:
             if allowed:
                 return Verdict(score, "review", tuple(reasons), fraud_signal)
             return Verdict(score, "delete", tuple(reasons), True)
-        if score <= RESCUE_THRESHOLD and not ev.auth.failed and (
-            allowed or transactional
+        if (
+            score <= RESCUE_THRESHOLD
+            and not ev.auth.failed
+            and not strong_fraud
+            and not urgent
+            and not foreign_language
+            and (allowed or transactional)
         ):
             return Verdict(score, "rescue", tuple(reasons) or ("correo transaccional",), fraud_signal)
-        if allowed:
-            return Verdict(score, "review", tuple(reasons) or ("dominio permitido",), fraud_signal)
         return Verdict(score, "review", tuple(reasons) or ("sin señales claras",), fraud_signal)
 
     def _suspicious_tld(self, ev: Evidence) -> bool:

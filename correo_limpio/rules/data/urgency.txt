@@ -12,3 +12,9 @@ débito
 fatura
 envío
 paquete
+final notice
+act now
+urgent action
+expires today
+suspensión
+suspendida

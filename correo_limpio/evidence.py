@@ -41,7 +41,8 @@ STOPWORDS = {
     você essa num nem suas meu às minha numa pelos elas qual nós lhe deles
     essas esses pelas este fosse dele tu vocês vos lhes meus minhas teu tua
     teus tuas nosso nossa nossos nossas dela delas esta estes estas aquele
-    aquela agora precisa
+    aquela agora precisa pagamento acesse disponível regularização imediata
+    acordo liberado senha obrigado prezado conta
     """.split()),
     "it": frozenset("""
     il lo gli le un uno una di del della dei degli delle al allo alla ai agli

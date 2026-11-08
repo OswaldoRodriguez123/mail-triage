@@ -104,7 +104,7 @@ class GraphClient:
         path = f"/me/mailFolders/{INBOX}/messages"
         params = {
             "$select": "from",
-            "$filter": f"receivedDateTime ge '{since.strftime('%Y-%m-%dT%H:%M:%SZ')}'",
+            "$filter": f"receivedDateTime ge {since.strftime('%Y-%m-%dT%H:%M:%SZ')}",
             "$top": 250,
         }
         domains: set[str] = set()
