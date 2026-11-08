@@ -130,18 +130,6 @@ Cada corrida deja un reporte en `~/.local/state/mail-triage/runs/<run_id>/` en J
 - No manda cuerpos completos de correo a terceros: a Cloudflare solo van remitente, asunto, 400 caracteres de texto, dominios de enlaces y autenticación.
 - No crea reglas dentro del proveedor; todo el aprendizaje es local.
 
-## Migración desde el nombre anterior
-
-Antes se llamaba `correo-limpio`. Si venías de ahí, el código sigue encontrando
-tu configuración, estado y secretos viejos automáticamente. Para dejar todo
-en el nuevo nombre:
-
-```bash
-mv ~/.config/correo-limpio ~/.config/mail-triage
-mv ~/.local/state/correo-limpio ~/.local/state/mail-triage
-security find-generic-password -s correo-limpio -a refresh-token -w  # cópialo y guárdalo con servicio mail-triage
-```
-
 ## Desinstalar
 
 ```bash
