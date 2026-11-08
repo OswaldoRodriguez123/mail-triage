@@ -1,6 +1,6 @@
 import unittest
 
-from correo_limpio.http import HttpResponse, UrllibHttp
+from mail_triage.http import HttpResponse, UrllibHttp
 
 
 class HttpTest(unittest.TestCase):

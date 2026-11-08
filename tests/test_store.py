@@ -2,7 +2,7 @@ import unittest
 from tempfile import TemporaryDirectory
 from pathlib import Path
 
-from correo_limpio.store import Store
+from mail_triage.store import Store
 
 
 class StoreTest(unittest.TestCase):
@@ -45,6 +45,28 @@ class StoreTest(unittest.TestCase):
         self.assertEqual(self.store.inbox_domains(), {"a.test", "b.test"})
         self.store.replace_inbox_domains({"c.test"}, "2026-01-02")
         self.assertEqual(self.store.inbox_domains(), {"c.test"})
+
+    def test_clef_verdict_cache_roundtrip(self):
+        self.store.cache_clef_verdict("a.test", "fraude", 0.9, 0.1, "2026-01-01T00:00:00+00:00")
+        row = self.store.get_clef_verdict("a.test")
+        self.assertEqual(row["category"], "fraude")
+        self.assertAlmostEqual(row["fraud"], 0.9)
+
+    def test_clef_verdict_cache_expires_by_scan_days(self):
+        self.store.mark_scan_day("2026-01-01", "2026-01-01T10:00:00+00:00")
+        self.store.cache_clef_verdict("a.test", "fraude", 0.9, 0.1, "2026-01-01T10:00:00+00:00")
+        for day in ("2026-02-01", "2026-03-01", "2026-03-02", "2026-03-03"):
+            self.store.mark_scan_day(day, f"{day}T10:00:00+00:00")
+        self.assertIsNotNone(self.store.get_clef_verdict("a.test", 4))
+        self.store.mark_scan_day("2026-03-04", "2026-03-04T10:00:00+00:00")
+        self.assertIsNone(self.store.get_clef_verdict("a.test", 4))
+
+    def test_same_day_runs_count_once(self):
+        self.store.mark_scan_day("2026-01-01", "2026-01-01T08:00:00+00:00")
+        self.store.cache_clef_verdict("a.test", "fraude", 0.9, 0.1, "2026-01-01T08:00:00+00:00")
+        self.store.mark_scan_day("2026-01-01", "2026-01-01T20:00:00+00:00")
+        self.store.mark_scan_day("2026-01-02", "2026-01-02T08:00:00+00:00")
+        self.assertIsNotNone(self.store.get_clef_verdict("a.test", 1))
 
 
 if __name__ == "__main__":

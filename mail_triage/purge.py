@@ -1,9 +1,25 @@
 from dataclasses import dataclass
 from datetime import datetime, timezone
 
-from correo_limpio.graph import DELETED, INBOX, JUNK, GraphError
+from mail_triage.graph import DELETED, INBOX, JUNK, GraphError
 
 ABORT_AFTER_FAILURES = 3
+
+FREE_DOMAINS = frozenset({
+    "gmail.com", "googlemail.com", "hotmail.com", "hotmail.es", "outlook.com",
+    "outlook.es", "live.com", "live.cl", "msn.com", "yahoo.com", "yahoo.es",
+    "icloud.com", "me.com", "mac.com", "aol.com", "proton.me", "protonmail.com",
+    "gmx.com", "gmx.net", "mail.com", "zoho.com", "yandex.com",
+})
+
+STRONG_FRAUD_REASONS = (
+    "marca suplantada",
+    "fallo de autenticación",
+    "reply-to distinto",
+    "tld sospechoso",
+    "dominio bloqueado",
+    "clef: fraude",
+)
 
 
 @dataclass(frozen=True)
@@ -54,6 +70,9 @@ def purge(cfg, graph, store, report, code, selection: Selection, now=None) -> Pu
     plan = [(n, DELETED, "delete") for n in sorted(selection.delete)]
     plan += [(n, INBOX, "rescue") for n in sorted(selection.rescue)]
 
+    known_rules = store.rules()
+    inbox_domains = store.inbox_domains()
+
     for n, destination, expected_bucket in plan:
         item = by_n.get(n)
         if item is None or item.bucket != expected_bucket:
@@ -79,6 +98,8 @@ def purge(cfg, graph, store, report, code, selection: Selection, now=None) -> Pu
             "purge",
             now_iso,
         )
+        if expected_bucket == "delete":
+            _learn_block(store, item, known_rules, inbox_domains)
     return PurgeResult(moved, failed, False)
 
 
@@ -94,6 +115,7 @@ def undo(cfg, graph, store, report, message_n: int | None = None) -> PurgeResult
             continue
         moved.append((item.n, JUNK))
         store.degrade_auto(item.domain)
+        store.remove_rule(item.domain, "purge")
     return PurgeResult(moved, failed, False)
 
 
@@ -128,6 +150,33 @@ def feedback(cfg, graph, store, report, n: int, verdict: str, *, rescue: bool = 
         except GraphError as exc:
             parts.append(f"No se pudo mover el mensaje {n} (Graph {exc.status}).")
     return " ".join(parts)
+
+
+def _learn_block(store, item, known_rules, inbox_domains) -> None:
+    domain = (item.domain or "").lower()
+    if not domain or _is_free(domain):
+        return
+    if known_rules.get(domain) in {"allow", "block"}:
+        return
+    if _matches_domain(domain, inbox_domains):
+        return
+    reasons = " ".join(item.reasons or ()).lower()
+    if not any(marker in reasons for marker in STRONG_FRAUD_REASONS):
+        return
+    store.upsert_rule(domain, "block", "purge")
+    known_rules[domain] = "block"
+
+
+def _is_free(domain: str) -> bool:
+    return _matches_domain(domain, FREE_DOMAINS)
+
+
+def _matches_domain(domain: str, candidates) -> bool:
+    for candidate in candidates or ():
+        candidate = (candidate or "").lower().strip()
+        if candidate and (domain == candidate or domain.endswith(f".{candidate}")):
+            return True
+    return False
 
 
 def _rule_value(verdict: str) -> str:

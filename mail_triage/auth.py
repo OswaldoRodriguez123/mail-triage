@@ -1,7 +1,7 @@
 import time
 from dataclasses import dataclass
 
-from correo_limpio.keychain import REFRESH_TOKEN, SecretStore
+from mail_triage.keychain import REFRESH_TOKEN, SecretStore
 
 BASE_URL = "https://login.microsoftonline.com"
 MAIL_READWRITE = "https://graph.microsoft.com/Mail.ReadWrite"
@@ -95,7 +95,7 @@ class Auth:
             return self._token
         refresh = self._secrets.get(REFRESH_TOKEN)
         if not refresh:
-            raise AuthError("no hay sesión; ejecuta `correo-limpio login`")
+            raise AuthError("no hay sesión; ejecuta `mail-triage login`")
         response = self._http.request(
             "POST",
             self._url("token"),

@@ -1,9 +1,9 @@
 import unittest
 
-from correo_limpio.classifier import ClefClient, ClefDecision, refine
-from correo_limpio.evidence import from_message
-from correo_limpio.http import HttpResponse
-from correo_limpio.rules import Verdict
+from mail_triage.classifier import ClefClient, ClefDecision, refine
+from mail_triage.evidence import from_message
+from mail_triage.http import HttpResponse
+from mail_triage.rules import Verdict
 from tests import fixtures
 
 
@@ -19,9 +19,9 @@ class FakeHttp:
 
 def clef_response(fraud, expected, category):
     return HttpResponse(200, {"result": {"answers": {
-        "fraude": {"probability": fraud},
-        "esperado": {"probability": expected},
-        "categoria": {"choice": category, "probabilities": {category: 0.9}},
+        "fraude": {"type": "noul", "noul": fraud},
+        "esperado": {"type": "noul", "noul": expected},
+        "categoria": {"type": "choice", "choice": category, "probabilities": {category: 0.9}},
     }}}, "")
 
 
@@ -37,6 +37,23 @@ class ClassifierTest(unittest.TestCase):
         self.assertEqual(body["model"], "clef-flash")
         self.assertEqual(set(body["questions"]), {"fraude", "esperado", "categoria"})
         self.assertNotIn("body", body["state"])
+        fraude = body["questions"]["fraude"]
+        self.assertEqual(fraude["type"], "noul")
+        self.assertIn("instructions", fraude)
+        self.assertNotIn("question", fraude)
+        categoria = body["questions"]["categoria"]
+        self.assertEqual(categoria["type"], "choice")
+        self.assertIn("criteria", categoria)
+        self.assertNotIn("choices", categoria)
+
+    def test_parses_answer_shape(self):
+        http = FakeHttp(clef_response(0.93, 0.12, "fraude"))
+        decision = ClefClient(http, "acct", "tok").evaluate(
+            from_message(fixtures.sanitized_receipt())
+        )
+        self.assertAlmostEqual(decision.fraud_prob, 0.93)
+        self.assertAlmostEqual(decision.expected_prob, 0.12)
+        self.assertEqual(decision.category, "fraude")
 
     def test_fraud_high_deletes(self):
         d = ClefDecision("fraude", 0.95, 0.1, {})

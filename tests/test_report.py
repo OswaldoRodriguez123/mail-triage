@@ -4,7 +4,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
-from correo_limpio.report import ReportItem, build_report, load, render, save
+from mail_triage.report import ReportItem, build_report, load, render, save
 
 
 def item(n=1, bucket="delete"):

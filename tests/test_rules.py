@@ -1,11 +1,11 @@
 import unittest
 from pathlib import Path
 
-from correo_limpio.evidence import from_message
-from correo_limpio.rules import RuleSet
+from mail_triage.evidence import from_message
+from mail_triage.rules import RuleSet
 from tests import fixtures
 
-DATA = Path(__file__).resolve().parents[1] / "correo_limpio" / "rules" / "data"
+DATA = Path(__file__).resolve().parents[1] / "mail_triage" / "rules" / "data"
 
 
 class RulesTest(unittest.TestCase):

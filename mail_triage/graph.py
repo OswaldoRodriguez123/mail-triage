@@ -1,7 +1,7 @@
 import urllib.parse
 from datetime import datetime, timedelta, timezone
 
-from correo_limpio.http import HttpClient
+from mail_triage.http import HttpClient
 
 GRAPH_BASE = "https://graph.microsoft.com/v1.0"
 
@@ -97,8 +97,23 @@ class GraphClient:
             return messages, False
         return messages, False
 
+    def list_junk_senders(self, page_size: int = 100) -> list[dict]:
+        messages: list[dict] = []
+        url: str | None = self._url(
+            f"/me/mailFolders/{JUNK}/messages",
+            {"$select": "id,from", "$top": page_size},
+        )
+        while url:
+            response = self._http.request("GET", url, headers=self._headers())
+            if not 200 <= response.status < 300:
+                raise GraphError(response.status, response.text)
+            page = response.json
+            messages.extend(page.get("value", []))
+            url = page.get("@odata.nextLink")
+        return messages
+
     def inbox_domains(self, lookback_days: int) -> set[str]:
-        from correo_limpio.evidence import registrable_domain
+        from mail_triage.evidence import registrable_domain
 
         since = datetime.now(timezone.utc) - timedelta(days=lookback_days)
         path = f"/me/mailFolders/{INBOX}/messages"

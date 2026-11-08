@@ -1,8 +1,8 @@
 from dataclasses import dataclass
 
-from correo_limpio.evidence import Evidence
-from correo_limpio.http import HttpClient
-from correo_limpio.rules import Verdict
+from mail_triage.evidence import Evidence
+from mail_triage.http import HttpClient
+from mail_triage.rules import Verdict
 
 MODEL = "@cf/cloudflare/clef-flash"
 DEFAULT_BASE = "https://api.cloudflare.com/client/v4"
@@ -111,23 +111,23 @@ def _questions() -> dict:
     return {
         "fraude": {
             "type": "noul",
-            "question": "¿Es un intento de fraude o suplantación?",
+            "instructions": "¿Es un intento de fraude o suplantación?",
         },
         "esperado": {
             "type": "noul",
-            "question": "¿El destinatario probablemente espera o necesita este correo?",
+            "instructions": "¿El destinatario probablemente espera o necesita este correo?",
         },
         "categoria": {
             "type": "choice",
-            "question": "¿Qué tipo de correo es?",
-            "choices": [
-                "fraude",
-                "phishing",
-                "promocion",
-                "boletin",
-                "notificacion_legitima",
-                "persona",
-            ],
+            "instructions": "¿Qué tipo de correo es?",
+            "criteria": {
+                "fraude": "Fraude o suplantación de identidad",
+                "phishing": "Intento de robar credenciales o datos",
+                "promocion": "Promoción comercial o publicidad",
+                "boletin": "Boletín o newsletter",
+                "notificacion_legitima": "Notificación legítima de un servicio",
+                "persona": "Mensaje de una persona real",
+            },
         },
     }
 
@@ -137,11 +137,12 @@ def _probability(answer) -> float:
         return float(answer)
     if not isinstance(answer, dict):
         return 0.0
-    if "probability" in answer:
-        try:
-            return float(answer["probability"])
-        except (TypeError, ValueError):
-            return 0.0
+    for key in ("probability", "noul"):
+        if key in answer:
+            try:
+                return float(answer[key])
+            except (TypeError, ValueError):
+                return 0.0
     probabilities = answer.get("probabilities")
     if isinstance(probabilities, dict) and probabilities:
         if "yes" in probabilities:

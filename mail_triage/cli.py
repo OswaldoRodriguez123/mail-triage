@@ -5,30 +5,30 @@ import sys
 from pathlib import Path
 from types import SimpleNamespace
 
-from correo_limpio.auth import Auth, AuthError
-from correo_limpio.classifier import ClefClient
-from correo_limpio.config import load_config
-from correo_limpio.graph import GraphClient, GraphError
-from correo_limpio.http import UrllibHttp
-from correo_limpio.keychain import (
+from mail_triage.auth import Auth, AuthError
+from mail_triage.classifier import ClefClient
+from mail_triage.config import load_config
+from mail_triage.graph import GraphClient, GraphError
+from mail_triage.http import UrllibHttp
+from mail_triage.keychain import (
     CLOUDFLARE_ACCOUNT_ID,
     CLOUDFLARE_TOKEN,
     REFRESH_TOKEN,
     MacKeychain,
 )
-from correo_limpio.pipeline import scan
-from correo_limpio.purge import feedback, parse_selection, purge, undo
-from correo_limpio.rdap import domain_age_days
-from correo_limpio.report import load, render
-from correo_limpio.rules import RuleSet
-from correo_limpio.store import Store
+from mail_triage.pipeline import rescue_allowed, scan
+from mail_triage.purge import feedback, parse_selection, purge, undo
+from mail_triage.rdap import domain_age_days
+from mail_triage.report import load, render
+from mail_triage.rules import RuleSet
+from mail_triage.store import Store
 
 SETUP_STEPS = """Falta `client_id` en tu configuración.
 
 1. Registra una app en https://portal.azure.com (cuentas personales).
 2. Permisos delegados: Mail.ReadWrite y offline_access.
 3. Activa "Allow public client flows".
-4. Copia el Application (client) ID en ~/.config/correo-limpio/config.toml:
+4. Copia el Application (client) ID en ~/.config/mail-triage/config.toml:
    client_id = "tu-client-id"
 """
 
@@ -100,7 +100,10 @@ def _login(args) -> int:
 
 def _scan(args) -> int:
     context = build_context(args)
-    max_items = None if args.all else args.max
+    rescued = rescue_allowed(context.graph, context.store)
+    if rescued:
+        print(f"Rescatados automáticamente a Bandeja: {len(rescued)}.")
+    max_items = None if args.all else (args.max if args.max is not None else context.cfg.max_per_run)
     report, code = scan(
         context.cfg,
         context.graph,
@@ -189,7 +192,7 @@ def _feedback(args) -> int:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="correo-limpio")
+    parser = argparse.ArgumentParser(prog="mail-triage")
     sub = parser.add_subparsers(dest="command", required=True)
 
     sub.add_parser("status", help="muestra la configuración y el estado")

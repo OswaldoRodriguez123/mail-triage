@@ -1,10 +1,10 @@
 import unittest
 from pathlib import Path
 
-from correo_limpio.evidence import from_message
-from correo_limpio.rules import RuleSet
+from mail_triage.evidence import from_message
+from mail_triage.rules import RuleSet
 
-DATA = Path(__file__).resolve().parents[1] / "correo_limpio" / "rules" / "data"
+DATA = Path(__file__).resolve().parents[1] / "mail_triage" / "rules" / "data"
 
 
 def msg(subject, name, address, body, auth="spf=pass smtp.mailfrom=x.test; dkim=pass; dmarc=pass header.from=x.test"):

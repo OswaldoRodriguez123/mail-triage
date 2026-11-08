@@ -1,6 +1,6 @@
 import unittest
 
-from correo_limpio.evidence import from_message, parse_auth_results, registrable_domain
+from mail_triage.evidence import from_message, parse_auth_results, registrable_domain
 from tests import fixtures
 
 

@@ -3,11 +3,11 @@ from datetime import timedelta
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
-from correo_limpio.config import Config
-from correo_limpio.graph import GraphError
-from correo_limpio.purge import Selection, feedback, parse_selection, purge, undo
-from correo_limpio.report import ReportItem, build_report
-from correo_limpio.store import Store
+from mail_triage.config import Config
+from mail_triage.graph import GraphError
+from mail_triage.purge import Selection, feedback, parse_selection, purge, undo
+from mail_triage.report import ReportItem, build_report
+from mail_triage.store import Store
 
 
 class FakeGraph:
@@ -92,6 +92,39 @@ class PurgeTest(unittest.TestCase):
 
     def test_parse_selection_ranges(self):
         self.assertEqual(parse_selection("1,3-4", None, None), Selection({1, 3, 4}, set()))
+
+    def _report_for(self, domain, reasons=("fallo de autenticación",)):
+        item = ReportItem(1, "mx", "s", f"a@{domain}", domain, "delete", 0.9, reasons, None)
+        return build_report([item], False, "rules")
+
+    def test_delete_learns_block_rule(self):
+        report, code = self._report_for("spam.test")
+        purge(self.cfg, self.graph, self.store, report, code, Selection({1}, set()))
+        self.assertEqual(self.store.rules().get("spam.test"), "block")
+        self.assertEqual(self.store.rule_sources().get("spam.test"), "purge")
+
+    def test_free_provider_never_blocked(self):
+        report, code = self._report_for("hotmail.com")
+        purge(self.cfg, self.graph, self.store, report, code, Selection({1}, set()))
+        self.assertNotIn("hotmail.com", self.store.rules())
+
+    def test_inbox_domain_never_blocked(self):
+        self.store.replace_inbox_domains({"spam.test"}, "2026-01-01")
+        report, code = self._report_for("spam.test")
+        purge(self.cfg, self.graph, self.store, report, code, Selection({1}, set()))
+        self.assertNotIn("spam.test", self.store.rules())
+
+    def test_weak_delete_does_not_block(self):
+        report, code = self._report_for("spam.test", reasons=("sin señales claras",))
+        purge(self.cfg, self.graph, self.store, report, code, Selection({1}, set()))
+        self.assertNotIn("spam.test", self.store.rules())
+
+    def test_undo_removes_purge_rule(self):
+        report, code = self._report_for("spam.test")
+        purge(self.cfg, self.graph, self.store, report, code, Selection({1}, set()))
+        self.assertEqual(self.store.rules().get("spam.test"), "block")
+        undo(self.cfg, self.graph, self.store, report, message_n=1)
+        self.assertNotIn("spam.test", self.store.rules())
 
 
 if __name__ == "__main__":

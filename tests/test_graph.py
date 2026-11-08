@@ -1,7 +1,7 @@
 import unittest
 
-from correo_limpio.graph import GraphClient, GraphError, DELETED
-from correo_limpio.http import HttpResponse
+from mail_triage.graph import GraphClient, GraphError, DELETED
+from mail_triage.http import HttpResponse
 
 
 class FakeHttp:

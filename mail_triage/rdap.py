@@ -1,6 +1,6 @@
 from datetime import date, datetime, timezone
 
-from correo_limpio.http import UrllibHttp
+from mail_triage.http import UrllibHttp
 
 RDAP_BASE = "https://rdap.org/domain"
 

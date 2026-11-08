@@ -1,18 +1,18 @@
 [project]
-name = "correo-limpio"
+name = "mail-triage"
 version = "0.1.0"
 requires-python = ">=3.11"
 dependencies = []
 
 [project.scripts]
-correo-limpio = "correo_limpio.cli:main"
+mail-triage = "mail_triage.cli:main"
 
 [build-system]
 requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
-include = ["correo_limpio*"]
+include = ["mail_triage*"]
 
 [tool.setuptools.package-data]
-correo_limpio = ["rules/data/*.txt"]
+mail_triage = ["rules/data/*.txt"]

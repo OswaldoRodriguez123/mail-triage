@@ -1,12 +1,14 @@
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
-from correo_limpio.classifier import refine
-from correo_limpio.config import Config
-from correo_limpio.evidence import from_message
-from correo_limpio.report import ReportItem, build_report, save
+from mail_triage.classifier import ClefDecision, refine
+from mail_triage.config import Config
+from mail_triage.evidence import from_message, registrable_domain
+from mail_triage.graph import INBOX
+from mail_triage.report import ReportItem, build_report, save
 
 CLEF_SUMMARY = "{category} fraude={fraud:.2f} esperado={expected:.2f}"
+CLEF_CACHE_RUNS = 4
 
 
 def scan(
@@ -23,9 +25,10 @@ def scan(
 ):
     now = now or datetime.now(timezone.utc)
     now_iso = now.isoformat(timespec="seconds")
+    store.mark_scan_day(now.date().isoformat(), now_iso)
 
     skip = set() if include_reviewed else (store.decided_ids() | store.reviewed_ids())
-    messages, has_more = graph.list_junk(max_items or cfg.max_per_run, skip)
+    messages, has_more = graph.list_junk(max_items, skip)
 
     inbox = graph.inbox_domains(cfg.inbox_lookback_days)
     store.replace_inbox_domains(inbox, now_iso)
@@ -50,7 +53,7 @@ def scan(
         clef_label = None
         protected = _is_protected(verdict)
         if verdict.bucket == "review" and clef is not None and not protected:
-            decision = clef.evaluate(ev)
+            decision = _clef_decision(store, clef, ev, now)
             if decision is not None:
                 clef_used = True
                 clef_label = CLEF_SUMMARY.format(
@@ -78,6 +81,65 @@ def scan(
     for item in report.items:
         store.record_seen(item.message_id, report.run_id, item.bucket, now_iso)
     return report, code
+
+
+def rescue_allowed(graph, store, now=None) -> list[tuple[str, str]]:
+    allow = {domain for domain, verdict in store.rules().items() if verdict == "allow"}
+    if not allow:
+        return []
+    now = now or datetime.now(timezone.utc)
+    now_iso = now.isoformat(timespec="seconds")
+    moved: list[tuple[str, str]] = []
+    for message in graph.list_junk_senders():
+        address = (
+            (message.get("from") or {}).get("emailAddress", {}).get("address", "")
+        )
+        if "@" not in address:
+            continue
+        domain = registrable_domain(address.rsplit("@", 1)[1])
+        if not domain or not _domain_allowed(domain, allow):
+            continue
+        graph.move(message["id"], INBOX)
+        moved.append((message["id"], domain))
+        store.record_decision(
+            "auto-rescue",
+            0,
+            message["id"],
+            address,
+            domain,
+            "rescue",
+            "dominio permitido",
+            "rescue",
+            now_iso,
+        )
+    return moved
+
+
+def _domain_allowed(domain: str, allowed) -> bool:
+    domain = (domain or "").lower()
+    for candidate in allowed or ():
+        candidate = (candidate or "").lower().strip()
+        if candidate and (domain == candidate or domain.endswith(f".{candidate}")):
+            return True
+    return False
+
+
+def _clef_decision(store, clef, ev, now):
+    cached = store.get_clef_verdict(ev.from_domain, CLEF_CACHE_RUNS)
+    if cached is not None:
+        return ClefDecision(
+            cached["category"], float(cached["fraud"]), float(cached["expected"]), {}
+        )
+    decision = clef.evaluate(ev)
+    if decision is not None:
+        store.cache_clef_verdict(
+            ev.from_domain,
+            decision.category,
+            decision.fraud_prob,
+            decision.expected_prob,
+            now.isoformat(timespec="seconds"),
+        )
+    return decision
 
 
 def _dedupe(messages) -> list[dict]:

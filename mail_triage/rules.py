@@ -2,7 +2,7 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 
-from correo_limpio.evidence import Evidence, find_brand
+from mail_triage.evidence import Evidence, find_brand
 
 WEIGHTS = {
     "brand": 0.35,

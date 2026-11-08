@@ -7,10 +7,10 @@ from tempfile import TemporaryDirectory
 from types import SimpleNamespace
 from unittest import mock
 
-from correo_limpio import cli
-from correo_limpio.auth import DeviceCode
-from correo_limpio.cli import main
-from correo_limpio.report import build_report
+from mail_triage import cli
+from mail_triage.auth import DeviceCode
+from mail_triage.cli import main
+from mail_triage.report import build_report
 
 
 class StatusTest(unittest.TestCase):
@@ -56,6 +56,7 @@ class CliWiringTest(unittest.TestCase):
     def test_scan_prints_code(self):
         report, code = build_report([], False, "rules")
         with mock.patch.object(cli, "scan", return_value=(report, code)), \
+             mock.patch.object(cli, "rescue_allowed", return_value=[]), \
              mock.patch.object(cli, "build_context", return_value=mock.Mock()):
             rc, out = self.run_main(["scan"])
         self.assertEqual(rc, 0)

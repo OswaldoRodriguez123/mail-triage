@@ -1,8 +1,8 @@
 import unittest
 
-from correo_limpio.auth import Auth, AuthError, DeviceCode
-from correo_limpio.http import HttpResponse
-from correo_limpio.keychain import MemoryStore
+from mail_triage.auth import Auth, AuthError, DeviceCode
+from mail_triage.http import HttpResponse
+from mail_triage.keychain import MemoryStore
 
 
 class FakeHttp:

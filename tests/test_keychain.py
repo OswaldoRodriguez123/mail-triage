@@ -1,7 +1,7 @@
 import unittest
 from unittest import mock
 
-from correo_limpio.keychain import MacKeychain, MemoryStore
+from mail_triage.keychain import MacKeychain, MemoryStore
 
 
 class KeychainTest(unittest.TestCase):
@@ -19,7 +19,7 @@ class KeychainTest(unittest.TestCase):
         self.assertEqual(store.get("refresh-token"), "secret")
         args = run.call_args.args[0]
         self.assertEqual(args[:3], ["security", "find-generic-password", "-s"])
-        self.assertIn("correo-limpio", args)
+        self.assertIn("mail-triage", args)
 
     def test_mac_keychain_missing_returns_none(self):
         run = mock.Mock(return_value=mock.Mock(stdout=b"", returncode=44))

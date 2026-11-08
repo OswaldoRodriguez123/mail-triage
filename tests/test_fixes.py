@@ -2,12 +2,12 @@ import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
-from correo_limpio.evidence import from_message
-from correo_limpio.rules import RuleSet
-from correo_limpio.store import Store
+from mail_triage.evidence import from_message
+from mail_triage.rules import RuleSet
+from mail_triage.store import Store
 from tests import fixtures
 
-DATA = Path(__file__).resolve().parents[1] / "correo_limpio" / "rules" / "data"
+DATA = Path(__file__).resolve().parents[1] / "mail_triage" / "rules" / "data"
 
 
 class RulesFixTest(unittest.TestCase):
@@ -30,14 +30,14 @@ class RulesFixTest(unittest.TestCase):
 
 class ClassifierFixTest(unittest.TestCase):
     def test_locked_veto_not_upgraded_to_delete(self):
-        from correo_limpio.classifier import ClefDecision, refine
-        from correo_limpio.rules import Verdict
+        from mail_triage.classifier import ClefDecision, refine
+        from mail_triage.rules import Verdict
         d = ClefDecision("fraude", 0.99, 0.01, {})
         self.assertEqual(refine(Verdict(0.4, "review", ("dominio permitido",), False), d).bucket, "review")
 
     def test_locked_promo_not_upgraded_to_delete_or_rescue(self):
-        from correo_limpio.classifier import ClefDecision, refine
-        from correo_limpio.rules import Verdict
+        from mail_triage.classifier import ClefDecision, refine
+        from mail_triage.rules import Verdict
         d1 = ClefDecision("fraude", 0.99, 0.01, {})
         d2 = ClefDecision("notificacion_legitima", 0.01, 0.95, {})
         self.assertEqual(refine(Verdict(0.2, "review", ("promoción",), False), d1).bucket, "review")
@@ -64,8 +64,8 @@ class StoreFixTest(unittest.TestCase):
 
 class CliFixTest(unittest.TestCase):
     def test_purge_invalid_code_returns_2(self):
-        from correo_limpio import cli
-        from correo_limpio.report import ReportItem, build_report
+        from mail_triage import cli
+        from mail_triage.report import ReportItem, build_report
         import io
         from contextlib import redirect_stdout, redirect_stderr
         from unittest import mock

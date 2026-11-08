@@ -2,8 +2,8 @@
 
 set -euo pipefail
 
-SKILL_DIR="$(pwd)/skills/correo-limpio"
-TARGET="$HOME/.config/opencode/skills/correo-limpio"
+SKILL_DIR="$(pwd)/skills/mail-triage"
+TARGET="$HOME/.config/opencode/skills/mail-triage"
 
 if [[ ! -f "$SKILL_DIR/SKILL.md" ]]; then
   echo "No se encontró $SKILL_DIR/SKILL.md; ejecuta este script desde la raíz del repo." >&2

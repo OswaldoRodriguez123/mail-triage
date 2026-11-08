@@ -1,4 +1,4 @@
-# Correo Limpio
+# Mail Triage
 
 CLI local y skill de OpenCode que revisan la carpeta **No deseados** de una cuenta personal de Microsoft (Hotmail/Outlook).
 
@@ -20,7 +20,7 @@ CLI local y skill de OpenCode que revisan la carpeta **No deseados** de una cuen
 ### 1. Registrar la app en Azure
 
 1. Entra a **Azure Portal → Microsoft Entra ID → App registrations → New registration**.
-2. Nombre: `correo-limpio`.
+2. Nombre: `mail-triage`.
 3. **Supported account types**: *Accounts in any organizational directory and personal Microsoft accounts* (cuentas personales).
 4. **Redirect URI**: ninguna (flujo de código de dispositivo).
 5. **API permissions** (permisos delegados):
@@ -32,7 +32,7 @@ CLI local y skill de OpenCode que revisan la carpeta **No deseados** de una cuen
 ### 2. Guardar el client_id
 
 ```toml
-# ~/.config/correo-limpio/config.toml
+# ~/.config/mail-triage/config.toml
 client_id = "tu-client-id"
 max_per_run = 200
 inbox_lookback_days = 90
@@ -42,13 +42,13 @@ inbox_lookback_days = 90
 
 ```bash
 pip install -e .   # si quieres el comando corto
-correo-limpio login
+mail-triage login
 ```
 
 o sin instalar:
 
 ```bash
-python3 -m correo_limpio login
+python3 -m mail_triage login
 ```
 
 ### 4. (Opcional) Cloudflare Workers AI
@@ -56,7 +56,7 @@ python3 -m correo_limpio login
 Clef-flash (`@cf/cloudflare/clef-flash`) opina solo sobre los correos en la banda dudosa, dentro del tier gratuito de 10.000 neuronas/día y con retención de datos cero. Sin credenciales, el motor de reglas sigue funcionando.
 
 ```bash
-correo-limpio login --cloudflare
+mail-triage login --cloudflare
 ```
 
 Se piden el **account ID** y un API token con permiso de Workers AI. Se guardan en el Keychain.
@@ -67,32 +67,32 @@ Se piden el **account ID** y un API token con permiso de Workers AI. Se guardan 
 ./scripts/install-skill.sh
 ```
 
-Esto enlaza `skills/correo-limpio/` en `~/.config/opencode/skills/`.
+Esto enlaza `skills/mail-triage/` en `~/.config/opencode/skills/`.
 
 ## Uso
 
 ```bash
 # Revisar sin mover nada: imprime los tres grupos y un código de 6 caracteres.
-correo-limpio scan
+mail-triage scan
 
 # Ejecutar solo lo aprobado del último reporte (código válido 60 minutos).
-correo-limpio purge --run <run_id> --code <código> --delete 1,4,7 --rescue 2
+mail-triage purge --run <run_id> --code <código> --delete 1,4,7 --rescue 2
 
 # Grupo completo: borrar todo lo que está en BORRAR.
-correo-limpio purge --run <run_id> --code <código> --group delete
+mail-triage purge --run <run_id> --code <código> --group delete
 
 # Deshacer: devolver mensajes de una corrida a No deseados.
-correo-limpio undo <run_id> [--message <n>]
+mail-triage undo <run_id> [--message <n>]
 
 # Corregir la clasificación de un mensaje y aprender de ello.
-correo-limpio feedback <run_id> <n> --keep [--rescue]   # es legítimo
-correo-limpio feedback <run_id> <n> --spam               # es fraude
+mail-triage feedback <run_id> <n> --keep [--rescue]   # es legítimo
+mail-triage feedback <run_id> <n> --spam               # es fraude
 
 # Estado y credenciales (sin imprimir valores).
-correo-limpio status
+mail-triage status
 ```
 
-Cada corrida deja un reporte en `~/.local/state/correo-limpio/runs/<run_id>/` en JSON y CSV.
+Cada corrida deja un reporte en `~/.local/state/mail-triage/runs/<run_id>/` en JSON y CSV.
 
 ## Qué hace y qué no
 
@@ -114,14 +114,26 @@ Cada corrida deja un reporte en `~/.local/state/correo-limpio/runs/<run_id>/` en
 - No manda cuerpos completos de correo a terceros: a Cloudflare solo van remitente, asunto, 400 caracteres de texto, dominios de enlaces y autenticación.
 - No crea reglas dentro de Outlook; todo el aprendizaje es local.
 
+## Migración desde el nombre anterior
+
+Antes se llamaba `correo-limpio`. Si venías de ahí, el código sigue encontrando
+tu configuración, estado y secretos viejos automáticamente. Para dejar todo
+en el nuevo nombre:
+
+```bash
+mv ~/.config/correo-limpio ~/.config/mail-triage
+mv ~/.local/state/correo-limpio ~/.local/state/mail-triage
+security find-generic-password -s correo-limpio -a refresh-token -w  # cópialo y guárdalo con servicio mail-triage
+```
+
 ## Desinstalar
 
 ```bash
-rm ~/.config/opencode/skills/correo-limpio
-rm -rf ~/.local/state/correo-limpio ~/.config/correo-limpio
-security delete-generic-password -s correo-limpio -a refresh-token
-security delete-generic-password -s correo-limpio -a cloudflare-account-id
-security delete-generic-password -s correo-limpio -a cloudflare-token
+rm ~/.config/opencode/skills/mail-triage
+rm -rf ~/.local/state/mail-triage ~/.config/mail-triage
+security delete-generic-password -s mail-triage -a refresh-token
+security delete-generic-password -s mail-triage -a cloudflare-account-id
+security delete-generic-password -s mail-triage -a cloudflare-token
 ```
 
 Borrar el estado elimina las reglas aprendidas y la sesión; los correos movidos permanecen en Papelera o Bandeja.

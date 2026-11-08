@@ -42,6 +42,19 @@ CREATE TABLE IF NOT EXISTS domain_age (
     created TEXT,
     checked_at TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS clef_verdicts (
+    domain TEXT PRIMARY KEY,
+    category TEXT NOT NULL,
+    fraud REAL NOT NULL,
+    expected REAL NOT NULL,
+    checked_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS scan_days (
+    day TEXT PRIMARY KEY,
+    seen_at TEXT NOT NULL
+);
 """
 
 
@@ -153,6 +166,52 @@ class Store:
         with self._connection() as connection:
             connection.execute(
                 "DELETE FROM rules WHERE domain = ? AND source = 'auto'", (domain,)
+            )
+
+    def remove_rule(self, domain: str, source: str) -> None:
+        with self._connection() as connection:
+            connection.execute(
+                "DELETE FROM rules WHERE domain = ? AND source = ?", (domain, source)
+            )
+
+    def get_clef_verdict(
+        self, domain: str, max_scan_days: int | None = None
+    ) -> dict | None:
+        if not domain:
+            return None
+        with self._connection() as connection:
+            row = connection.execute(
+                "SELECT category, fraud, expected, checked_at FROM clef_verdicts WHERE domain = ?",
+                (domain,),
+            ).fetchone()
+            if row is None:
+                return None
+            if max_scan_days is not None:
+                checked_day = (row["checked_at"] or "")[:10]
+                later = connection.execute(
+                    "SELECT COUNT(*) AS n FROM scan_days WHERE day > ?", (checked_day,)
+                ).fetchone()["n"]
+                if later > max_scan_days:
+                    return None
+        return dict(row)
+
+    def mark_scan_day(self, day: str, seen_at: str) -> None:
+        with self._connection() as connection:
+            connection.execute(
+                "INSERT OR IGNORE INTO scan_days(day, seen_at) VALUES (?, ?)",
+                (day, seen_at),
+            )
+
+    def cache_clef_verdict(
+        self, domain: str, category: str, fraud: float, expected: float, checked_at: str
+    ) -> None:
+        if not domain:
+            return
+        with self._connection() as connection:
+            connection.execute(
+                "INSERT OR REPLACE INTO clef_verdicts(domain, category, fraud, expected, checked_at) "
+                "VALUES (?, ?, ?, ?, ?)",
+                (domain, category, fraud, expected, checked_at),
             )
 
     def replace_inbox_domains(self, domains, seen_at: str) -> None:

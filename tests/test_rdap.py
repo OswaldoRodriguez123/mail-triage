@@ -1,6 +1,6 @@
 import unittest
 
-from correo_limpio.rdap import domain_age_days
+from mail_triage.rdap import domain_age_days
 
 
 class RdapTest(unittest.TestCase):
