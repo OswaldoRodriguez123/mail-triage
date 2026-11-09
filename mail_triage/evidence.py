@@ -15,6 +15,47 @@ banco bbva santander hsbc citibanamex oxxo mercadolibre dhl fedex ups vivo
 claro telcel medicare coinbase binance steam spotify disney uber rappi stripe
 """.split())
 
+# Invisible characters used to obfuscate brand names.
+_INVISIBLE_CHARS = frozenset(
+    chr(c)
+    for start, end in (
+        (0x00AD, 0x00AD), (0x200B, 0x200F), (0x2060, 0x2064),
+        (0xFE00, 0xFE0F), (0xFEFF, 0xFEFF), (0xE0100, 0xE01EF),
+    )
+    for c in range(start, end + 1)
+)
+
+# Homoglyphs: characters that look like Latin letters but are from other scripts.
+_HOMOGLYPHS = {
+    0x0410: "A", 0x0412: "B", 0x0421: "C", 0x0415: "E", 0x041D: "H",
+    0x0406: "I", 0x0408: "J", 0x041A: "K", 0x041C: "M", 0x041E: "O",
+    0x0420: "P", 0x0405: "S", 0x0422: "T", 0x0425: "X", 0x0423: "Y",
+    0x0430: "a", 0x0441: "c", 0x0435: "e", 0x0456: "i", 0x043E: "o",
+    0x0440: "p", 0x0455: "s", 0x0445: "x", 0x0443: "y",
+    0x051B: "q", 0x051D: "w", 0x0501: "h", 0x0578: "n", 0x0261: "g",
+    0x0391: "A", 0x0392: "B", 0x0395: "E", 0x0396: "Z", 0x0397: "H",
+    0x0399: "I", 0x039A: "K", 0x039C: "M", 0x039D: "N", 0x039F: "O",
+    0x03A1: "P", 0x03A4: "T", 0x03A7: "X",
+    0x03B1: "a", 0x03B5: "e", 0x03BF: "o", 0x03C1: "p",
+}
+
+
+def normalize_for_matching(text: str) -> str:
+    """Strip invisible characters and map homoglyphs to ASCII for brand detection."""
+    if not text:
+        return ""
+    result = []
+    for ch in text:
+        if ch in _INVISIBLE_CHARS:
+            continue
+        codepoint = ord(ch)
+        if codepoint in _HOMOGLYPHS:
+            result.append(_HOMOGLYPHS[codepoint])
+        else:
+            result.append(ch)
+    return "".join(result)
+
+
 VOWELS = frozenset("aeiouy")
 
 STOPWORDS = {
@@ -155,7 +196,7 @@ def detect_language(text: str) -> str:
 
 
 def find_brand(text: str, brands: set[str] | frozenset[str]) -> str | None:
-    haystack = (text or "").lower()
+    haystack = normalize_for_matching(text or "").lower()
     for brand in sorted(brands, key=len, reverse=True):
         if brand and re.search(rf"(?<!\w){re.escape(brand)}(?!\w)", haystack):
             return brand

@@ -2,10 +2,11 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 
-from mail_triage.evidence import Evidence, find_brand
+from mail_triage.evidence import Evidence, find_brand, normalize_for_matching
 
 WEIGHTS = {
     "brand": 0.35,
+    "brand_mismatch": 0.50,
     "auth_fail": 0.30,
     "random_sender": 0.25,
     "reply_to": 0.20,
@@ -79,10 +80,20 @@ class RuleSet:
         transactional = _contains_any(haystack, TRANSACTIONAL_WORDS)
 
         brand = ev.brand or find_brand(f"{ev.from_name} {ev.subject}", self.brands)
+        brand_in_name = False
+        domain_has_brand = True
         if brand:
             score += WEIGHTS["brand"]
             fraud_signal = True
             reasons.append("marca suplantada")
+            # Brand claimed in display name but sent from an unrelated domain.
+            normalized_name = normalize_for_matching(ev.from_name or "").lower()
+            brand_in_name = find_brand(normalized_name, {brand}) is not None
+            domain_has_brand = brand in (ev.from_domain or "").lower()
+            if brand_in_name and not domain_has_brand:
+                score += WEIGHTS["brand_mismatch"]
+                fraud_signal = True
+                reasons.append("marca suplantada desde dominio ajeno")
 
         if ev.auth.failed:
             score += WEIGHTS["auth_fail"]
@@ -130,6 +141,7 @@ class RuleSet:
 
         strong_fraud = (
             bool(brand)
+            or (brand is not None and brand_in_name and not domain_has_brand)
             or ev.auth.failed
             or bool(ev.reply_to_domain and ev.reply_to_domain != ev.from_domain)
             or blocked

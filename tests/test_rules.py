@@ -58,5 +58,42 @@ class RulesTest(unittest.TestCase):
         self.assertEqual(v.bucket, "review")
 
 
+    def test_obfuscated_brand_from_foreign_domain_is_deleted(self):
+        # Brand claimed in display name via invisible chars, sent from unrelated domain.
+        msg = {
+            "id": "m_obf",
+            "internetMessageId": "<m_obf@example.test>",
+            "subject": "Your request to change phone number on your account is now pending review.",
+            "from": {"emailAddress": {"name": "C\U000e0139o\U000e0139i\U000e0139n\U000e0139b\U000e0139a\U000e0139s\U000e0139e Support", "address": "bz@lyglj.com"}},
+            "body": {"content": "Dear Customer, your account has a pending request."},
+            "receivedDateTime": "2026-11-06T10:00:00Z",
+            "hasAttachments": False,
+            "internetMessageHeaders": [{"name": "Authentication-Results", "value": "spf=pass; dkim=pass; dmarc=pass"}],
+        }
+        from mail_triage.evidence import from_message
+        ev = from_message(msg)
+        v = self.rules.evaluate(ev, allow_domains=frozenset(), block_domains=frozenset(), domain_age_days=100)
+        self.assertEqual(v.bucket, "delete")
+        self.assertIn("marca suplantada desde dominio ajeno", v.reasons)
+
+    def test_brand_in_subject_only_from_foreign_domain_stays_review(self):
+        # Brand mentioned in subject but not in display name -> no mismatch bonus.
+        msg = {
+            "id": "m_subj",
+            "internetMessageId": "<m_subj@example.test>",
+            "subject": "Coinbase account update",
+            "from": {"emailAddress": {"name": "Newsletter", "address": "news@example.com"}},
+            "body": {"content": "Check your Coinbase account."},
+            "receivedDateTime": "2026-11-06T10:00:00Z",
+            "hasAttachments": False,
+            "internetMessageHeaders": [{"name": "Authentication-Results", "value": "spf=pass; dkim=pass; dmarc=pass"}],
+        }
+        from mail_triage.evidence import from_message
+        ev = from_message(msg)
+        v = self.rules.evaluate(ev, allow_domains=frozenset(), block_domains=frozenset(), domain_age_days=100)
+        # Brand in subject adds 0.35 but no mismatch bonus -> review band.
+        self.assertEqual(v.bucket, "review")
+        self.assertNotIn("marca suplantada desde dominio ajeno", v.reasons)
+
 if __name__ == "__main__":
     unittest.main()
