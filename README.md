@@ -1,136 +1,192 @@
 # Mail Triage
 
-CLI local y skill de OpenCode que revisa la carpeta de **correo no deseado** de tu cuenta y clasifica cada mensaje en **BORRAR**, **RESCATAR** o **REVISAR**, con confirmación explícita antes de mover nada.
+[![tests](https://github.com/OswaldoRodriguez123/mail-triage/actions/workflows/tests.yml/badge.svg)](https://github.com/OswaldoRodriguez123/mail-triage/actions/workflows/tests.yml)
 
-- **Borra solo fraude y engaño**: suplantación, phishing, estafa y enlaces maliciosos. Promociones y boletines legítimos nunca se borran.
-- **Rescata a la Bandeja lo que parece legítimo**, como un recibo o una notificación que el usuario definitivamente espera.
-- **Lo dudoso se queda**: va a `REVISAR` y se muestra con su razón.
-- **Aprende de las correcciones**: dominios permitidos y bloqueados, con reglas automáticas solo después de tres correcciones explícitas coincidentes.
-- Todo es local: Python con biblioteca estándar, SQLite y Keychain. Sin servicios de pago.
+Local CLI and OpenCode skill that reviews your **junk mail** folder and sorts
+every message into **DELETE**, **RESCUE** or **REVIEW**, with explicit
+confirmation before anything moves.
 
-### Proveedores
+```text
+Corrida 20261110T120000-a1b2c3 · modo scan
+Válido hasta 2026-11-10 13:00 UTC
 
-El motor trabaja contra una interfaz `MailProvider`. Hoy solo está implementado el backend de **Microsoft Outlook** vía Microsoft Graph, pero la arquitectura está lista para agregar Gmail, IMAP u otros proveedores sin tocar la clasificación.
+BORRAR (2)
+  1. [0.97] Microsoft Support · micros0ft-support.top
+     Your account will be suspended in 24 hours
+     razón: suplantación de marca: microsoft; dominio con TLD sospechoso; urgencia; fallo de autenticación SPF/DKIM
+  2. [0.91] Facturación · facturacion.cl
+     Factura 2026-118 · Servicios Digitales
+     razón: reply-to distinto del remitente; enlace a dominio ajeno; dominio registrado hace 3 días
 
-| Proveedor | Estado |
-|---|---|
-| Outlook / Microsoft Graph | ✅ implementado |
-| Gmail | 🔜 próximo (solo hay que agregar `providers/gmail.py`) |
-| IMAP genérico | 🔮 futuro |
+RESCATAR (2)
+  3. [0.12] Tienda Ejemplo · tienda-ejemplo.cl
+     Tu pedido fue enviado
+     razón: dominio permitido
+  4. [0.18] Barbería Centro · barberia-centro.cl
+     Confirmación de reserva
+     razón: remitente conocido; enlace al mismo dominio
 
-Cada comando acepta `--provider` (por defecto `outlook`).
+REVISAR (2)
+  5. [0.48] Revista Ejemplo · revista-ejemplo.com
+     Newsletter semanal
+     razón: boletín con baja sospechosa; remitente nuevo
+  6. [0.52] Contacto · gmail.com
+     Re: propuesta
+     razón: asunto genérico; remitente aleatorio
+```
 
-## Requisitos
+- **Only fraud and scams get deleted**: impersonation, phishing, scams and
+  malicious links. Legitimate promotions and newsletters are never deleted.
+- **Legit-looking mail is rescued to the Inbox**, such as a receipt or a
+  notification the user is actually waiting for.
+- **Doubtful mail stays**: it goes to `REVIEW` with its reason.
+- **It learns from corrections**: allowed and blocked domains, with automatic
+  rules only after three matching explicit corrections.
+- Everything is local: Python standard library, SQLite and Keychain. No paid
+  services.
 
-- macOS con Python 3.11 o superior.
-- Cuenta en un proveedor soportado (hoy Microsoft Outlook).
-- Para Outlook: una app registrada en Azure (gratis), una sola vez.
-- Opcional: una cuenta de Cloudflare para la segunda opinión con Clef-flash.
+### Providers
 
-## Configuración
+The engine works against a `MailProvider` interface. Only the **Microsoft
+Outlook** backend (Microsoft Graph) is implemented today, but the architecture
+is ready for Gmail, IMAP or others without touching the classifier.
 
-### 1. Proveedor Outlook (Microsoft Graph)
+| Provider | Status |
+| --- | --- |
+| Outlook / Microsoft Graph | ✅ implemented |
+| Gmail | 🔜 next (only `providers/gmail.py` is missing) |
+| Generic IMAP | 🔮 future |
 
-Para el backend de Outlook necesitas registrar una app en Azure:
+Every command accepts `--provider` (defaults to `outlook`).
 
-1. Entra a **Azure Portal → Microsoft Entra ID → App registrations → New registration**.
-2. Nombre: `mail-triage`.
-3. **Supported account types**: *Accounts in any organizational directory and personal Microsoft accounts* (cuentas personales).
-4. **Redirect URI**: ninguna (flujo de código de dispositivo).
-5. **API permissions** (permisos delegados):
+## Requirements
+
+- macOS with Python 3.11 or newer.
+- An account on a supported provider (Microsoft Outlook today).
+- For Outlook: an app registered in Azure (free), one time only.
+- Optional: a Cloudflare account for the Clef-flash second opinion.
+
+## Setup
+
+### 1. Outlook provider (Microsoft Graph)
+
+To use the Outlook backend you need to register an app in Azure:
+
+1. Go to **Azure Portal → Microsoft Entra ID → App registrations → New registration**.
+2. Name: `mail-triage`.
+3. **Supported account types**: *Accounts in any organizational directory and
+   personal Microsoft accounts*.
+4. **Redirect URI**: none (device code flow).
+5. **API permissions** (delegated):
    - `Microsoft Graph` → `Mail.ReadWrite`
    - `Microsoft Graph` → `offline_access`
-6. Guarda el **Application (client) ID**.
-7. En **Authentication**, activa **Allow public client flows** (falla el flujo de código de dispositivo si está apagado).
+6. Save the **Application (client) ID**.
+7. In **Authentication**, enable **Allow public client flows** (the device code
+   flow fails if this is off).
 
-### 2. Guardar el client_id
+### 2. Store the client_id
 
 ```toml
 # ~/.config/mail-triage/config.toml
-client_id = "tu-client-id"
+client_id = "your-client-id"
 max_per_run = 200
 inbox_lookback_days = 90
 ```
 
-### 3. Autorizar proveedor
+### 3. Authorize the provider
 
 ```bash
-pip install -e .   # si quieres el comando corto
+pip install -e .   # for the short command
 mail-triage login --provider outlook
 ```
 
-o sin instalar:
+or without installing:
 
 ```bash
 python3 -m mail_triage login
 ```
 
-### 4. (Opcional) Cloudflare Workers AI
+### 4. (Optional) Cloudflare Workers AI
 
-Clef-flash (`@cf/cloudflare/clef-flash`) opina solo sobre los correos en la banda dudosa, dentro del tier gratuito de 10.000 neuronas/día y con retención de datos cero. Sin credenciales, el motor de reglas sigue funcionando.
+Clef-flash (`@cf/cloudflare/clef-flash`) only weighs in on mail in the doubtful
+band, inside the free tier of 10,000 neurons/day and with zero data retention.
+Without credentials the rule engine still works.
 
 ```bash
 mail-triage login --cloudflare
 ```
 
-Se piden el **account ID** y un API token con permiso de Workers AI. Se guardan en el Keychain.
+It asks for the **account ID** and an API token with the Workers AI permission.
+Both are stored in the Keychain.
 
-### 5. (Opcional) Instalar la skill de OpenCode
+### 5. (Optional) Install the OpenCode skill
 
 ```bash
 ./scripts/install-skill.sh
 ```
 
-Esto enlaza `skills/mail-triage/` en `~/.config/opencode/skills/`.
+This links `skills/mail-triage/` into `~/.config/opencode/skills/`.
 
-## Uso
+## Usage
 
 ```bash
-# Revisar sin mover nada: imprime los tres grupos y un código de 6 caracteres.
+# Review without moving anything: prints the three groups and a 6-character code.
 mail-triage scan --provider outlook
 
-# Ejecutar solo lo aprobado del último reporte (código válido 60 minutos).
-mail-triage purge --run <run_id> --code <código> --delete 1,4,7 --rescue 2 --provider outlook
+# Apply only what was approved in the last report (code valid for 60 minutes).
+mail-triage purge --run <run_id> --code <code> --delete 1,4,7 --rescue 2 --provider outlook
 
-# Grupo completo: borrar todo lo que está en BORRAR.
-mail-triage purge --run <run_id> --code <código> --group delete
+# Whole group: delete everything in DELETE.
+mail-triage purge --run <run_id> --code <code> --group delete
 
-# Deshacer: devolver mensajes de una corrida a No deseados.
+# Undo: move messages from a run back to Junk.
 mail-triage undo <run_id> [--message <n>]
 
-# Corregir la clasificación de un mensaje y aprender de ello.
-mail-triage feedback <run_id> <n> --keep [--rescue]   # es legítimo
-mail-triage feedback <run_id> <n> --spam               # es fraude
+# Correct a classification and learn from it.
+mail-triage feedback <run_id> <n> --keep [--rescue]   # it is legit
+mail-triage feedback <run_id> <n> --spam               # it is fraud
 
-# Estado y credenciales (sin imprimir valores).
+# Status and credentials (never prints values).
 mail-triage status
 ```
 
-Cada corrida deja un reporte en `~/.local/state/mail-triage/runs/<run_id>/` en JSON y CSV.
+Each run leaves a report in `~/.local/state/mail-triage/runs/<run_id>/` as JSON
+and CSV.
 
-## Qué hace y qué no
+## What it does and does not do
 
-**Hace**
+**Does**
 
-- Escanea No deseados por lotes (tope 200 por defecto), sin repetir mensajes ya revisados.
-- Califica cada correo con reglas deterministas: suplantación de marca, fallo de autenticación, remitente aleatorio, reply-to distinto, enlace a dominio ajeno, urgencia, idioma distinto de español/inglés, TLD sospechoso y antigüedad del dominio (RDAP). Cada decisión trae su razón.
-- Usa Clef-flash como segunda opinión solo para la banda dudosa.
-- Mueve lo aprobado a **Papelera** o a **Bandeja de entrada** a través del proveedor activo.
-- Aprende dominios permitidos y bloqueados en SQLite: un veto nunca se borra, una regla de bloqueo confirmada fuerza borrar.
-- Degrada automáticamente una regla automática cuando la corrida que la causó se deshace.
-- Cachea veredictos del modelo por dominio (válidos por 4 días con corridas) para evitar reconsultar lo ya evaluado.
-- Rescata automáticamente a la Bandeja lo que venga de dominios permitidos, sin llamar al modelo.
+- Scans Junk in batches (200 by default) without repeating messages already
+  reviewed.
+- Scores every email with deterministic rules: brand impersonation,
+  authentication failure, random sender, mismatched reply-to, link to a foreign
+  domain, urgency, language other than Spanish/English, suspicious TLD and
+  domain age (RDAP). Every decision carries its reason.
+- Uses Clef-flash as a second opinion only for the doubtful band.
+- Moves approved mail to **Trash** or **Inbox** through the active provider.
+- Learns allowed and blocked domains in SQLite: a veto is never removed, and a
+  confirmed block rule forces deletion.
+- Automatically downgrades an automatic rule when the run that caused it is
+  undone.
+- Caches model verdicts per domain (valid for 4 days with runs) to avoid
+  re-querying what was already evaluated.
+- Automatically rescues mail from allowed domains to the Inbox without calling
+  the model.
 
-**No hace**
+**Does not**
 
-- No borra permanentemente (`permanentDelete` nunca se llama) y no vacía la Papelera.
-- No toca otras carpetas que las equivalentes a Papelera y Bandeja del proveedor.
-- No envía, responde ni lee adjuntos; no es un cliente de correo.
-- `undo` y `feedback --rescue` no exigen `--code`: son operaciones por mensaje y reversibles; el código de confirmación solo se exige para `purge`, que es el único que mueve lotes.
-- No manda cuerpos completos de correo a terceros: a Cloudflare solo van remitente, asunto, 400 caracteres de texto, dominios de enlaces y autenticación.
-- No crea reglas dentro del proveedor; todo el aprendizaje es local.
+- Permanently delete (`permanentDelete` is never called) or empty the Trash.
+- Touch folders other than the provider's Trash and Inbox equivalents.
+- Send, reply or read attachments; it is not a mail client.
+- `undo` and `feedback --rescue` do not require `--code`: they are per-message
+  and reversible. The confirmation code is only required for `purge`, the only
+  command that moves batches.
+- Send full email bodies to third parties: Cloudflare only receives sender,
+  subject, 400 characters of text, link domains and authentication results.
+- Create rules inside the provider; all learning is local.
 
-## Desinstalar
+## Uninstall
 
 ```bash
 rm ~/.config/opencode/skills/mail-triage
@@ -140,4 +196,9 @@ security delete-generic-password -s mail-triage -a cloudflare-account-id
 security delete-generic-password -s mail-triage -a cloudflare-token
 ```
 
-Borrar el estado elimina las reglas aprendidas y la sesión; los correos movidos permanecen en Papelera o Bandeja.
+Deleting the state removes the learned rules and the session; moved emails stay
+in Trash or Inbox.
+
+## License
+
+MIT. See [LICENSE](LICENSE).
