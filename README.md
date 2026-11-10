@@ -54,10 +54,11 @@ is ready for Gmail, IMAP or others without touching the classifier.
 | Provider | Status |
 | --- | --- |
 | Outlook / Microsoft Graph | ✅ implemented |
-| Gmail | 🔜 next (only `providers/gmail.py` is missing) |
-| Generic IMAP | 🔮 future |
+| Gmail | not implemented |
+| Generic IMAP | not implemented |
 
-Every command accepts `--provider` (defaults to `outlook`).
+`scan`, `purge`, `undo` and `feedback` accept `--provider` (defaults to
+`outlook`).
 
 ## Requirements
 
