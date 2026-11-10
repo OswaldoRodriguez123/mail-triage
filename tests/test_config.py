@@ -9,7 +9,7 @@ from mail_triage.config import load_config
 
 class ConfigTest(unittest.TestCase):
     def test_defaults_use_xdg_paths(self):
-        with TemporaryDirectory() as tmp, mock.patch.dict("os.environ", {"HOME": tmp}, clear=False):
+        with TemporaryDirectory() as tmp, mock.patch.dict("os.environ", {"HOME": tmp}, clear=True):
             cfg = load_config()
             self.assertEqual(cfg.config_dir, Path(tmp) / ".config" / "mail-triage")
             self.assertEqual(cfg.state_dir, Path(tmp) / ".local" / "state" / "mail-triage")
