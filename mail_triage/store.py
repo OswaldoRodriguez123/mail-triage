@@ -1,3 +1,4 @@
+import os
 import sqlite3
 from contextlib import contextmanager
 from datetime import datetime, timezone
@@ -65,6 +66,12 @@ class Store:
     @contextmanager
     def _connection(self):
         self.path.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            fd = os.open(self.path, os.O_CREAT | os.O_RDWR, 0o600)
+            os.close(fd)
+            os.chmod(self.path, 0o600)
+        except OSError:
+            pass  # sqlite will surface a real error below if the file is unusable
         connection = sqlite3.connect(self.path)
         connection.row_factory = sqlite3.Row
         try:

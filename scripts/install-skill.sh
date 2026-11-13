@@ -10,6 +10,11 @@ if [[ ! -f "$SKILL_DIR/SKILL.md" ]]; then
   exit 1
 fi
 
+if [[ -e "$TARGET" && ! -L "$TARGET" ]]; then
+  echo "Ya existe un archivo o directorio real en $TARGET; no lo sobrescribo. Muévelo o elimínalo primero." >&2
+  exit 1
+fi
+
 mkdir -p "$(dirname "$TARGET")"
 ln -sfn "$SKILL_DIR" "$TARGET"
 echo "Skill enlazada en $TARGET"

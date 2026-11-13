@@ -2,6 +2,7 @@ import csv
 import hashlib
 import hmac
 import json
+import os
 import secrets
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
@@ -41,6 +42,10 @@ class RunReport:
     items: tuple[ReportItem, ...]
     has_more: bool
     mode: str
+    # Local HMAC key used to sign the plan digest and the confirmation code.
+    # Never persisted; reports written to disk stay unsigned until loaded
+    # with the same key. When None, falls back to unkeyed sha256 (legacy).
+    secret: bytes | None = None
 
     def code_matches(self, code: str, now: datetime | None = None) -> bool:
         if not code:
@@ -48,23 +53,25 @@ class RunReport:
         now = now or datetime.now(timezone.utc)
         if _aware(now) > self.expires_at:
             return False
-        return hmac.compare_digest(_hash(code), self.code_hash)
+        return hmac.compare_digest(_hash(code, self.secret), self.code_hash)
 
 
-def build_report(items, has_more: bool, mode: str, now: datetime | None = None):
+def build_report(items, has_more: bool, mode: str, now: datetime | None = None,
+                 secret: bytes | None = None):
     now = now or datetime.now(timezone.utc)
     items = tuple(items)
     code = "".join(secrets.choice(CODE_ALPHABET) for _ in range(CODE_LENGTH))
     run_id = f"{now.strftime('%Y%m%dT%H%M%S')}-{secrets.token_hex(3)}"
     return RunReport(
         run_id=run_id,
-        code_hash=_hash(code),
+        code_hash=_hash(code, secret),
         created_at=now,
         expires_at=now + CODE_TTL,
-        digest=_digest(items),
+        digest=_digest(items, secret),
         items=items,
         has_more=has_more,
         mode=mode,
+        secret=secret,
     ), code
 
 
@@ -96,13 +103,22 @@ def render(report: RunReport) -> str:
 
 
 def save(report: RunReport, runs_dir: Path) -> Path:
+    _mkdir_private(Path(runs_dir))
     directory = Path(runs_dir) / report.run_id
-    directory.mkdir(parents=True, exist_ok=True)
+    _mkdir_private(directory)
     json_path = directory / "report.json"
-    json_path.write_text(
-        json.dumps(_to_dict(report), ensure_ascii=False, indent=2), encoding="utf-8"
+    _write_private(
+        json_path,
+        json.dumps(_to_dict(report), ensure_ascii=False, indent=2),
     )
-    with (directory / "report.csv").open("w", encoding="utf-8", newline="") as handle:
+    csv_path = directory / "report.csv"
+    fd = os.open(csv_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    try:
+        os.fchmod(fd, 0o600)
+    except OSError:
+        os.close(fd)
+        raise
+    with os.fdopen(fd, "w", encoding="utf-8", newline="") as handle:
         writer = csv.writer(handle)
         writer.writerow(["n", "bucket", "score", "sender", "domain", "subject", "reasons"])
         for item in report.items:
@@ -118,8 +134,13 @@ def save(report: RunReport, runs_dir: Path) -> Path:
     return json_path
 
 
-def load(run_id: str, runs_dir: Path) -> RunReport:
-    path = Path(runs_dir) / run_id / "report.json"
+def load(run_id: str, runs_dir: Path, secret: bytes | None = None) -> RunReport:
+    base = Path(runs_dir).resolve()
+    if not run_id or Path(run_id).is_absolute() or ".." in Path(run_id).parts:
+        raise ValueError("run_id inválido")
+    path = (base / run_id / "report.json").resolve()
+    if not path.is_relative_to(base):
+        raise ValueError("run_id fuera del directorio de corridas")
     data = json.loads(path.read_text(encoding="utf-8"))
     items = tuple(
         ReportItem(
@@ -135,7 +156,7 @@ def load(run_id: str, runs_dir: Path) -> RunReport:
         )
         for raw in data.get("items", [])
     )
-    if _digest(items) != data.get("digest"):
+    if not hmac.compare_digest(_digest(items, secret), data.get("digest") or ""):
         raise ValueError("reporte alterado: el digest no coincide")
     return RunReport(
         run_id=data["run_id"],
@@ -146,10 +167,12 @@ def load(run_id: str, runs_dir: Path) -> RunReport:
         items=items,
         has_more=bool(data.get("has_more")),
         mode=data.get("mode", "rules"),
+        secret=secret,
     )
 
 
 def _to_dict(report: RunReport) -> dict:
+    # `secret` is deliberately excluded: the key never touches the disk.
     return {
         "run_id": report.run_id,
         "code_hash": report.code_hash,
@@ -175,15 +198,40 @@ def _to_dict(report: RunReport) -> dict:
     }
 
 
-def _digest(items) -> str:
+def _digest(items, secret: bytes | None = None) -> str:
     canonical = "\n".join(
         f"{item.n}|{item.message_id}|{item.bucket}|{item.score}" for item in items
     )
-    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+    return _mac(secret, canonical.encode("utf-8"))
 
 
-def _hash(code: str) -> str:
-    return hashlib.sha256(code.encode("utf-8")).hexdigest()
+def _hash(code: str, secret: bytes | None = None) -> str:
+    return _mac(secret, code.encode("utf-8"))
+
+
+def _mac(secret: bytes | None, data: bytes) -> str:
+    if secret:
+        return hmac.new(secret, data, hashlib.sha256).hexdigest()
+    return hashlib.sha256(data).hexdigest()
+
+
+def _mkdir_private(directory: Path) -> None:
+    directory.mkdir(parents=True, exist_ok=True)
+    try:
+        os.chmod(directory, 0o700)
+    except OSError:
+        pass
+
+
+def _write_private(path: Path, text: str) -> None:
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    try:
+        os.fchmod(fd, 0o600)
+    except OSError:
+        os.close(fd)
+        raise
+    with os.fdopen(fd, "w", encoding="utf-8") as handle:
+        handle.write(text)
 
 
 def _aware(value: datetime) -> datetime:

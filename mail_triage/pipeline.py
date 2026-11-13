@@ -22,6 +22,7 @@ def scan(
     include_reviewed: bool = False,
     max_items: int | None = None,
     now: datetime | None = None,
+    secret: bytes | None = None,
 ):
     now = now or datetime.now(timezone.utc)
     now_iso = now.isoformat(timespec="seconds")
@@ -76,7 +77,7 @@ def scan(
             )
         )
 
-    report, code = build_report(items, has_more, "clef" if clef_used else "rules", now=now)
+    report, code = build_report(items, has_more, "clef" if clef_used else "rules", now=now, secret=secret)
     save(report, Path(cfg.state_dir) / "runs")
     for item in report.items:
         store.record_seen(item.message_id, report.run_id, item.bucket, now_iso)
