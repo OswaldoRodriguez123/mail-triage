@@ -1,7 +1,7 @@
 import urllib.parse
 from datetime import datetime, timedelta, timezone
 
-from mail_triage.http import HttpClient
+from mail_triage.http import HttpClient, origin_of
 
 GRAPH_BASE = "https://graph.microsoft.com/v1.0"
 
@@ -35,20 +35,22 @@ class GraphClient:
         return headers
 
     def _checked_url(self, url: str) -> str:
-        """Allow only absolute https URLs on the configured Graph host.
+        """Allow only https URLs on the configured Graph origin.
 
         The bearer token is re-attached on every request, so any URL taken
-        from a response (or passed absolute) must stay on the Graph origin.
+        from a response (or passed absolute) must stay on the Graph origin,
+        including its effective port: `https://graph.microsoft.com:444/...`
+        is a different origin and never receives the token.
         """
-        try:
-            parts = urllib.parse.urlsplit(url)
-            base = urllib.parse.urlsplit(self._base)
-        except ValueError as exc:
-            raise GraphError(0, f"URL inválida: {exc}") from exc
-        scheme_ok = parts.scheme.lower() == "https" and self._base.lower().startswith("https")
-        host = (parts.hostname or "").lower()
-        base_host = (base.hostname or "").lower()
-        if not scheme_ok or not host or host != base_host:
+        parts = origin_of(url)
+        base = origin_of(self._base)
+        if (
+            parts is None
+            or base is None
+            or parts[0] != "https"
+            or base[0] != "https"
+            or parts != base
+        ):
             raise GraphError(0, "URL fuera del host de Graph permitido")
         return url
 

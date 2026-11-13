@@ -244,6 +244,112 @@ class RdapInjectionTest(unittest.TestCase):
         self.assertEqual(called, ["https://rdap.org/domain/example.com"])
 
 
+class DigestCoversWholeReportTest(unittest.TestCase):
+    def _forge(self, tmp, mutate):
+        report, _ = build_report([item()], False, "rules", secret=SECRET)
+        path = save(report, Path(tmp))
+        data = json.loads(path.read_text(encoding="utf-8"))
+        mutate(data)
+        path.write_text(json.dumps(data), encoding="utf-8")
+        return report.run_id, path
+
+    def test_extended_expiry_is_rejected(self):
+        with TemporaryDirectory() as tmp:
+            run_id, _ = self._forge(
+                tmp, lambda d: d.update(expires_at="2999-01-01T00:00:00+00:00")
+            )
+            with self.assertRaises(ValueError):
+                load(run_id, Path(tmp), secret=SECRET)
+
+    def test_flipped_metadata_is_rejected(self):
+        with TemporaryDirectory() as tmp:
+            for mutation in (
+                lambda d: d.update(has_more=True),
+                lambda d: d.update(mode="clef"),
+                lambda d: d.update(run_id="forged-run-id"),
+            ):
+                run_id, _ = self._forge(tmp, mutation)
+                with self.assertRaises(ValueError):
+                    load(run_id, Path(tmp), secret=SECRET)
+
+    def test_edited_domain_and_reasons_are_rejected(self):
+        with TemporaryDirectory() as tmp:
+            def mutate(d):
+                d["items"][0]["domain"] = "evil.test"
+                d["items"][0]["reasons"] = ["clef: legítimo"]
+            run_id, _ = self._forge(tmp, mutate)
+            with self.assertRaises(ValueError):
+                load(run_id, Path(tmp), secret=SECRET)
+
+    def test_untampered_report_still_loads(self):
+        with TemporaryDirectory() as tmp:
+            report, code = build_report([item()], False, "rules", secret=SECRET)
+            save(report, Path(tmp))
+            loaded = load(report.run_id, Path(tmp), secret=SECRET)
+            self.assertTrue(loaded.code_matches(code))
+
+
+class RedirectBodyTest(unittest.TestCase):
+    def _request(self, url, data=None, method=None):
+        return urllib.request.Request(
+            url,
+            data=data,
+            headers={"Authorization": "Bearer tok", "Content-Type": "application/json"},
+            method=method,
+        )
+
+    def _redirect(self, req, newurl, code=307):
+        handler = _StripAuthRedirectHandler()
+        return handler.redirect_request(req, None, code, "Redirect", {}, newurl)
+
+    def test_cross_origin_post_with_body_is_refused(self):
+        req = self._request(
+            "https://graph.microsoft.com/start",
+            data=b'{"refresh_token":"secret"}',
+            method="POST",
+        )
+        self.assertIsNone(self._redirect(req, "https://evil.example.com/collect"))
+
+    def test_cross_origin_get_redirect_still_drops_authorization(self):
+        req = self._request("https://graph.microsoft.com/start", method="GET")
+        new_req = self._redirect(req, "https://evil.example.com/collect", code=302)
+        self.assertIsNone(new_req.headers.get("Authorization"))
+
+    def test_port_change_counts_as_cross_origin(self):
+        req = self._request("https://graph.microsoft.com/start", method="GET")
+        new_req = self._redirect(req, "https://graph.microsoft.com:444/collect", code=302)
+        self.assertIsNone(new_req.headers.get("Authorization"))
+
+    def test_same_origin_redirect_keeps_authorization(self):
+        req = self._request("https://graph.microsoft.com/start", method="GET")
+        new_req = self._redirect(req, "https://graph.microsoft.com:443/elsewhere", code=302)
+        self.assertEqual(new_req.headers.get("Authorization"), "Bearer tok")
+
+
+class GraphUrlGuardPortTest(unittest.TestCase):
+    def client(self, responses):
+        self.http = FakeHttp(responses)
+        return GraphClient(self.http, token_provider=lambda: "token")
+
+    def test_same_host_different_port_next_link_rejected(self):
+        g = self.client([
+            HttpResponse(200, {"value": [{"id": "1"}],
+                               "@odata.nextLink": "https://graph.microsoft.com:444/v1.0/next"}, ""),
+        ])
+        with self.assertRaises(GraphError):
+            list(g.iter_messages("junkemail", max_items=10, skip_ids=set()))
+        self.assertEqual(len(self.http.calls), 1)
+
+    def test_same_host_explicit_default_port_next_link_accepted(self):
+        g = self.client([
+            HttpResponse(200, {"value": [{"id": "1"}],
+                               "@odata.nextLink": "https://graph.microsoft.com:443/v1.0/next"}, ""),
+            HttpResponse(200, {"value": [{"id": "2"}]}, ""),
+        ])
+        messages, _ = g.list_junk(max_items=10, skip_ids=set())
+        self.assertEqual([m["id"] for m in messages], ["1", "2"])
+
+
 class KeychainStdinTest(unittest.TestCase):
     def test_secret_goes_via_stdin_not_argv(self):
         run = mock.Mock(return_value=mock.Mock(stdout=b"", stderr=b"", returncode=0))

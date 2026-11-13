@@ -39,15 +39,25 @@ def _parse_json(text: str) -> dict:
     return parsed if isinstance(parsed, dict) else {}
 
 
-def _origin(url: str) -> tuple[str, str, int | None] | None:
+def origin_of(url: str) -> tuple[str, str, int] | None:
+    """(scheme, host, effective port) for authorization decisions.
+
+    Two URLs belong to the same origin only if all three match, so an
+    attacker cannot hide behind an uncommon port (`https://host:444/`).
+    Defaults: https -> 443, http -> 80.
+    """
     try:
         parts = urllib.parse.urlsplit(url)
+        scheme = parts.scheme.lower()
+        host = (parts.hostname or "").lower()
+        port = parts.port  # raises ValueError on garbage
     except ValueError:
         return None
-    host = (parts.hostname or "").lower()
-    if not host:
+    if not scheme or not host:
         return None
-    return parts.scheme.lower(), host, parts.port
+    if port is None:
+        port = {"https": 443, "http": 80}.get(scheme, 0)
+    return scheme, host, port
 
 
 def _read_capped(handle) -> str:
@@ -69,13 +79,25 @@ def _check_content_length(headers) -> None:
 
 
 class _StripAuthRedirectHandler(urllib.request.HTTPRedirectHandler):
-    """Drop the Authorization header when a redirect crosses origins."""
+    """Keep credentials from leaking across origins on redirects.
+
+    Cross-origin redirects never get the Authorization header, and a
+    redirect that would re-send a request body (e.g. an OAuth POST with a
+    refresh token) is refused outright: returning None stops urllib from
+    following it and surfaces the 3xx to the caller instead.
+    """
 
     def redirect_request(self, req, fp, code, msg, headers, newurl):
+        target = origin_of(newurl)
+        current = origin_of(req.full_url)
+        cross_origin = target != current or target is None
+        if cross_origin and getattr(req, "data", None) is not None:
+            # Refuse to re-send a credential-bearing body to another origin.
+            return None
         new_req = super().redirect_request(req, fp, code, msg, headers, newurl)
         if new_req is None:
             return None
-        if _origin(newurl) != _origin(req.full_url):
+        if cross_origin:
             for store in (new_req.headers, getattr(new_req, "unredirected_hdrs", {})):
                 for key in list(store):
                     if key.lower() == "authorization":
