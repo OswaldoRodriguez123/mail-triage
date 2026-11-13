@@ -1,14 +1,24 @@
+import re
 from datetime import date, datetime, timezone
+from urllib.parse import quote
 
 from mail_triage.http import UrllibHttp
 
 RDAP_BASE = "https://rdap.org/domain"
+_HOSTNAME_RE = re.compile(r"^(?=.{1,253}$)[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)*$")
 
 
 def domain_age_days(domain: str, fetch=None, today=None) -> int | None:
+    host = (domain or "").strip().lower().rstrip(".")
+    try:
+        host = host.encode("idna").decode("ascii")
+    except (UnicodeError, ValueError):
+        return None
+    if not _HOSTNAME_RE.match(host):
+        return None  # not a plain hostname; never spliced into the URL raw
     try:
         fetch_json = fetch or _default_fetch
-        data = fetch_json(f"{RDAP_BASE}/{domain}")
+        data = fetch_json(f"{RDAP_BASE}/{quote(host, safe='')}")
         if not isinstance(data, dict):
             return None
         registered = None

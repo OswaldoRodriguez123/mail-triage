@@ -1,6 +1,9 @@
 import argparse
 import getpass
 import json
+import os
+import re
+import secrets
 import sys
 from pathlib import Path
 from types import SimpleNamespace
@@ -15,6 +18,7 @@ from mail_triage.providers.factory import get_provider
 from mail_triage.keychain import (
     CLOUDFLARE_ACCOUNT_ID,
     CLOUDFLARE_TOKEN,
+    PLAN_HMAC_KEY,
     REFRESH_TOKEN,
     MacKeychain,
 )
@@ -33,6 +37,28 @@ SETUP_STEPS = """Falta `client_id` en tu configuración.
 4. Copia el Application (client) ID en ~/.config/mail-triage/config.toml:
    client_id = "tu-client-id"
 """
+
+_RUN_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
+
+
+def _plan_secret(keychain) -> bytes:
+    """Key used to HMAC the plan digest and the confirmation code.
+
+    Generated once and kept in the Keychain; reports on disk stay
+    unforgeable without it. Fails closed if the Keychain is unusable.
+    """
+    try:
+        raw = keychain.get(PLAN_HMAC_KEY)
+        if raw:
+            try:
+                return bytes.fromhex(raw)
+            except ValueError:
+                pass  # corrupted entry: rotate below
+        key = secrets.token_bytes(32)
+        keychain.set(PLAN_HMAC_KEY, key.hex())
+        return key
+    except RuntimeError as exc:
+        raise AuthError(f"no se pudo acceder a la clave HMAC en el Keychain: {exc}") from exc
 
 
 def _status() -> int:
@@ -56,10 +82,16 @@ def build_context(args) -> SimpleNamespace:
     cfg = load_config()
     if not cfg.client_id:
         raise AuthError(SETUP_STEPS)
+    state_dir = Path(cfg.state_dir)
+    state_dir.mkdir(parents=True, exist_ok=True)
+    try:
+        os.chmod(state_dir, 0o700)
+    except OSError:
+        pass
     keychain = MacKeychain()
     http = UrllibHttp()
     auth = Auth(http, keychain, cfg.client_id)
-    store = Store(Path(cfg.state_dir) / "state.db")
+    store = Store(state_dir / "state.db")
     store.init()
     account_id = keychain.get(CLOUDFLARE_ACCOUNT_ID)
     token = keychain.get(CLOUDFLARE_TOKEN)
@@ -76,6 +108,7 @@ def build_context(args) -> SimpleNamespace:
         ruleset=RuleSet.load(Path(__file__).resolve().parent / "rules" / "data"),
         clef=clef,
         rdap=SimpleNamespace(domain_age_days=domain_age_days),
+        plan_secret=_plan_secret(keychain),
     )
 
 
@@ -104,6 +137,24 @@ def _login(args) -> int:
     return 0
 
 
+def _load_report(context, run_id: str):
+    if not run_id or not _RUN_ID_RE.match(run_id):
+        print("run_id inválido.", file=sys.stderr)
+        return None
+    try:
+        return load(
+            run_id,
+            Path(context.cfg.state_dir) / "runs",
+            secret=getattr(context, "plan_secret", None),
+        )
+    except FileNotFoundError:
+        print(f"No existe la corrida {run_id}.", file=sys.stderr)
+        return None
+    except ValueError as exc:
+        print(f"No se pudo abrir la corrida {run_id}: {exc}", file=sys.stderr)
+        return None
+
+
 def _scan(args) -> int:
     context = build_context(args)
     rescued = rescue_allowed(context.provider, context.store)
@@ -119,6 +170,7 @@ def _scan(args) -> int:
         context.rdap,
         include_reviewed=args.include_reviewed,
         max_items=max_items,
+        secret=getattr(context, "plan_secret", None),
     )
     print(render(report))
     print(f"\nCódigo {code} (válido 60 min)")
@@ -137,7 +189,9 @@ def _purge(args) -> int:
         return 2
 
     context = build_context(args)
-    report = load(args.run, Path(context.cfg.state_dir) / "runs")
+    report = _load_report(context, args.run)
+    if report is None:
+        return 2
     if not report.code_matches(args.code):
         print("Código inválido o expirado; no se movió nada.", file=sys.stderr)
         return 2
@@ -165,7 +219,9 @@ def _undo(args) -> int:
         print("Falta --run.", file=sys.stderr)
         return 2
     context = build_context(args)
-    report = load(args.run, Path(context.cfg.state_dir) / "runs")
+    report = _load_report(context, args.run)
+    if report is None:
+        return 2
     result = undo(context.cfg, context.provider, context.store, report, message_n=args.message)
     print(f"Movidos de vuelta a No deseados: {len(result.moved)}. Fallidos: {len(result.failed)}.")
     for number, status in result.failed:
@@ -179,7 +235,9 @@ def _feedback(args) -> int:
         print("Indica --keep o --spam.", file=sys.stderr)
         return 2
     context = build_context(args)
-    report = load(args.run, Path(context.cfg.state_dir) / "runs")
+    report = _load_report(context, args.run)
+    if report is None:
+        return 2
     try:
         message = feedback(
             context.cfg,

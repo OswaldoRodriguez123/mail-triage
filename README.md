@@ -152,7 +152,13 @@ mail-triage status
 ```
 
 Each run leaves a report in `~/.local/state/mail-triage/runs/<run_id>/` as JSON
-and CSV.
+and CSV. Both contain PII (subjects, senders, message ids): the directory is
+created owner-only (`0700`) and the files are written `0600`. The plan digest
+authenticates the whole report (every item field, the expiry and the run
+metadata) and the confirmation code is HMAC-signed, both with a per-machine
+key kept in the macOS Keychain (`plan-hmac-key`), so a report file copied or
+planted without the Keychain cannot be purged, undone or "corrected" into
+moving messages.
 
 ## What it does and does not do
 

@@ -1,7 +1,7 @@
 import urllib.parse
 from datetime import datetime, timedelta, timezone
 
-from mail_triage.http import HttpClient
+from mail_triage.http import HttpClient, origin_of
 
 GRAPH_BASE = "https://graph.microsoft.com/v1.0"
 
@@ -34,9 +34,35 @@ class GraphClient:
             headers.update(extra)
         return headers
 
+    def _checked_url(self, url: str) -> str:
+        """Allow only https URLs on the configured Graph origin.
+
+        The bearer token is re-attached on every request, so any URL taken
+        from a response (or passed absolute) must stay on the Graph origin,
+        including its effective port: `https://graph.microsoft.com:444/...`
+        is a different origin and never receives the token.
+        """
+        parts = origin_of(url)
+        base = origin_of(self._base)
+        if (
+            parts is None
+            or base is None
+            or parts[0] != "https"
+            or base[0] != "https"
+            or parts != base
+        ):
+            raise GraphError(0, "URL fuera del host de Graph permitido")
+        return url
+
+    def _next_link(self, page: dict) -> str | None:
+        url = page.get("@odata.nextLink")
+        if not url:
+            return None
+        return self._checked_url(url)
+
     def _url(self, path: str, params: dict | None = None) -> str:
         if path.startswith("http"):
-            return path
+            return self._checked_url(path)
         url = f"{self._base}{path}"
         if params:
             url = f"{url}?{urllib.parse.urlencode(params)}"
@@ -68,7 +94,7 @@ class GraphClient:
                 raise GraphError(response.status, response.text)
             page = response.json
             yield page
-            url = page.get("@odata.nextLink")
+            url = self._next_link(page)
 
     def iter_messages(self, folder, *, max_items, skip_ids, page_size=50):
         yielded = 0
@@ -109,7 +135,7 @@ class GraphClient:
                 raise GraphError(response.status, response.text)
             page = response.json
             messages.extend(page.get("value", []))
-            url = page.get("@odata.nextLink")
+            url = self._next_link(page)
         return messages
 
     def inbox_domains(self, lookback_days: int) -> set[str]:
@@ -141,8 +167,9 @@ class GraphClient:
                     if domain:
                         domains.add(domain)
                 senders += 1
-            url = page.get("@odata.nextLink")
+            url = self._next_link(page)
         return domains
 
     def move(self, message_id: str, destination: str) -> None:
-        self.post(f"/me/messages/{message_id}/move", {"destinationId": destination})
+        quoted = urllib.parse.quote(message_id, safe="")
+        self.post(f"/me/messages/{quoted}/move", {"destinationId": destination})
