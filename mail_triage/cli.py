@@ -240,7 +240,8 @@ def _undo(args) -> int:
     if report is None:
         return 2
     result = undo(context.cfg, context.provider, context.store, report, message_n=args.message)
-    print(f"Movidos de vuelta a No deseados: {len(result.moved)}. Fallidos: {len(result.failed)}.")
+    destination = "la Bandeja" if report.mode.startswith("inbox") else "No deseados"
+    print(f"Movidos de vuelta a {destination}: {len(result.moved)}. Fallidos: {len(result.failed)}.")
     for number, status in result.failed:
         print(f"  {number}: Graph {status}")
     return 0 if not result.failed else 1

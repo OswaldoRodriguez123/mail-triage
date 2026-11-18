@@ -39,6 +39,17 @@ class CliWiringTest(unittest.TestCase):
     def test_feedback_requires_verdict(self):
         self.assertEqual(self.run_main(["feedback", "run1", "1"])[0], 2)
 
+    def test_undo_of_inbox_report_says_inbox(self):
+        report, _ = build_report([], False, "inbox")
+        context = mock.Mock()
+        context.cfg.state_dir = "/tmp"
+        with mock.patch.object(cli, "build_context", return_value=context), \
+             mock.patch.object(cli, "load", return_value=report), \
+             mock.patch.object(cli, "undo", return_value=SimpleNamespace(moved=[], failed=[])):
+            rc, out = self.run_main(["undo", "--run", report.run_id])
+        self.assertEqual(rc, 0)
+        self.assertIn("Bandeja", out)
+
     def test_login_prints_device_code(self):
         with TemporaryDirectory() as tmp, \
              mock.patch.object(cli, "load_config") as cfg, \
