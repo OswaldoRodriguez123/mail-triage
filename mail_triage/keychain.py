@@ -1,3 +1,5 @@
+import ctypes
+import ctypes.util
 import subprocess
 from typing import Protocol
 
@@ -8,6 +10,111 @@ REFRESH_TOKEN = "refresh-token"
 CLOUDFLARE_ACCOUNT_ID = "cloudflare-account-id"
 CLOUDFLARE_TOKEN = "cloudflare-token"
 PLAN_HMAC_KEY = "plan-hmac-key"
+
+_ERR_SEC_DUPLICATE_ITEM = -25299
+_ERR_SEC_ITEM_NOT_FOUND = -25300
+_SECURITY = None
+_CORE_FOUNDATION = None
+
+
+def _core_foundation():
+    global _CORE_FOUNDATION
+    if _CORE_FOUNDATION is not None:
+        return _CORE_FOUNDATION
+    path = ctypes.util.find_library("CoreFoundation")
+    if not path:
+        raise RuntimeError("CoreFoundation no disponible")
+    lib = ctypes.CDLL(path)
+    lib.CFRelease.restype = None
+    lib.CFRelease.argtypes = [ctypes.c_void_p]
+    _CORE_FOUNDATION = lib
+    return lib
+
+
+def _cf_release(item) -> None:
+    if item:
+        _core_foundation().CFRelease(item)
+
+
+def _keychain_find(lib, service_bytes, account_bytes, item):
+    return lib.SecKeychainFindGenericPassword(
+        None, len(service_bytes), service_bytes, len(account_bytes), account_bytes,
+        None, None, ctypes.byref(item),
+    )
+
+
+def _keychain_add(lib, service_bytes, account_bytes, data, buffer):
+    return lib.SecKeychainAddGenericPassword(
+        None, len(service_bytes), service_bytes, len(account_bytes), account_bytes,
+        len(data), buffer, None,
+    )
+
+
+def _security():
+    """The macOS Security framework, loaded lazily so non-macOS imports work."""
+    global _SECURITY
+    if _SECURITY is not None:
+        return _SECURITY
+    path = ctypes.util.find_library("Security")
+    if not path:
+        raise RuntimeError("Security framework no disponible")
+    lib = ctypes.CDLL(path)
+    lib.SecKeychainAddGenericPassword.restype = ctypes.c_int32
+    lib.SecKeychainAddGenericPassword.argtypes = [
+        ctypes.c_void_p, ctypes.c_uint32, ctypes.c_char_p,
+        ctypes.c_uint32, ctypes.c_char_p, ctypes.c_uint32, ctypes.c_void_p,
+        ctypes.POINTER(ctypes.c_void_p),
+    ]
+    lib.SecKeychainFindGenericPassword.restype = ctypes.c_int32
+    lib.SecKeychainFindGenericPassword.argtypes = [
+        ctypes.c_void_p, ctypes.c_uint32, ctypes.c_char_p,
+        ctypes.c_uint32, ctypes.c_char_p, ctypes.c_void_p, ctypes.c_void_p,
+        ctypes.POINTER(ctypes.c_void_p),
+    ]
+    lib.SecKeychainItemModifyAttributesAndData.restype = ctypes.c_int32
+    lib.SecKeychainItemModifyAttributesAndData.argtypes = [
+        ctypes.c_void_p, ctypes.c_void_p, ctypes.c_uint32, ctypes.c_void_p,
+    ]
+    _SECURITY = lib
+    return lib
+
+
+def _keychain_write(service: str, account: str, value: str) -> None:
+    """Store a secret of any length without exposing it in argv.
+
+    `security add-generic-password -w` reads at most 128 characters from stdin
+    (silently truncating OAuth refresh tokens), so write through the Security
+    framework instead.
+    """
+    lib = _security()
+    service_bytes = service.encode("utf-8")
+    account_bytes = account.encode("utf-8")
+    data = value.encode("utf-8")
+    # create_string_buffer rejects a zero-length buffer; an empty secret is
+    # still a value the caller may want to store.
+    buffer = ctypes.create_string_buffer(data, max(len(data), 1))
+    item = ctypes.c_void_p()
+    status = _keychain_find(lib, service_bytes, account_bytes, item)
+    if status == 0:
+        try:
+            status = lib.SecKeychainItemModifyAttributesAndData(item, None, len(data), buffer)
+        finally:
+            _cf_release(item)
+    elif status == _ERR_SEC_ITEM_NOT_FOUND:
+        status = _keychain_add(lib, service_bytes, account_bytes, data, buffer)
+        if status == _ERR_SEC_DUPLICATE_ITEM:
+            # Another writer created the item between find and add: update it.
+            item = ctypes.c_void_p()
+            status = _keychain_find(lib, service_bytes, account_bytes, item)
+            if status == 0:
+                try:
+                    status = lib.SecKeychainItemModifyAttributesAndData(
+                        item, None, len(data), buffer
+                    )
+                finally:
+                    _cf_release(item)
+    if status != 0:
+        raise RuntimeError(f"no se pudo guardar el secreto en el Keychain (OSStatus {status})")
 
 
 class SecretStore(Protocol):
@@ -33,9 +140,10 @@ class MemoryStore:
 
 
 class MacKeychain:
-    def __init__(self, run=subprocess.run, services=(SERVICE, LEGACY_SERVICE)) -> None:
+    def __init__(self, run=subprocess.run, services=(SERVICE, LEGACY_SERVICE), writer=None) -> None:
         self._run = run
         self._services = tuple(services) or (SERVICE,)
+        self._write = writer or _keychain_write
 
     def _call(self, args: list[str], input_bytes: bytes | None = None) -> subprocess.CompletedProcess:
         return self._run(
@@ -61,21 +169,9 @@ class MacKeychain:
         return None
 
     def set(self, name: str, value: str) -> None:
-        # `-w` as the last argument makes `security` prompt for the secret on
-        # stdin instead of taking it from argv, so the value never shows up in
-        # `ps`/sysctl output of any co-resident process. The prompt asks for
-        # the value twice (password + retype).
-        try:
-            result = self._call(
-                ["security", "add-generic-password", "-U", "-s", self._services[0], "-a", name, "-w"],
-                input_bytes=f"{value}\n{value}\n".encode("utf-8"),
-            )
-        except FileNotFoundError as exc:
-            raise RuntimeError("security CLI no disponible") from exc
-        except subprocess.TimeoutExpired as exc:
-            raise RuntimeError("security add-generic-password agotó el tiempo de espera") from exc
-        if result.returncode != 0:
-            raise RuntimeError(result.stderr.decode("utf-8").strip())
+        # The value never reaches argv; the writer hands the full bytes to the
+        # Security framework, which has no 128-character stdin limit.
+        self._write(self._services[0], name, value)
 
     def delete(self, name: str) -> None:
         try:
