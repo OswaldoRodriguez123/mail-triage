@@ -146,8 +146,9 @@ class PipelineTest(unittest.TestCase):
 
     def test_clef_only_refines_review_band(self):
         self.scan()
-        # 8 fixtures - 3 delete (netflix, vivo, medicare lookalikes) - 1 rescue - 1 promo locked
-        self.assertEqual(self.clef.calls, 3)
+        # 8 fixtures - 3 delete (netflix, vivo, medicare lookalikes) - 1 rescue;
+        # the unknown-domain promo is no longer promo-protected and goes through Clef.
+        self.assertEqual(self.clef.calls, 4)
 
     def test_duplicate_message_ids_counted_once(self):
         self.graph.messages = [fixtures.netflix_phish(), fixtures.netflix_phish()]

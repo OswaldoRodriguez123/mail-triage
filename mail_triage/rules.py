@@ -16,6 +16,7 @@ WEIGHTS = {
     "suspicious_tld": 0.10,
     "new_domain": 0.10,
     "blocked": 0.25,
+    "promo_unknown": 0.45,
 }
 
 PROMO_WORDS = (
@@ -170,10 +171,30 @@ class RuleSet:
         urgent = _contains_any(haystack, self.urgency)
         foreign_language = ev.language not in ("es", "en", "unknown")
 
+        known_sender = bool(allowed) or (brand is not None and domain_has_brand)
+        promo_unknown = promo_hint and not known_sender
+
         if blocked and not allowed:
             return Verdict(1.0, "delete", ("dominio bloqueado",), True)
-        if promo_hint:
+        if promo_hint and known_sender:
             return Verdict(score, "review", tuple(reasons) or ("promoción",), fraud_signal)
+        if promo_hint and promo_unknown:
+            score += WEIGHTS["promo_unknown"]
+            reasons.append("promo de dominio desconocido")
+            score = round(min(score, 1.0), 2)
+            # Signals that actually separate spam marketing from legit marketing;
+            # urgency / language / foreign_link appear in almost every commercial
+            # email, so they add score but never send a promo to the trash alone.
+            discriminating = (
+                ev.auth.failed
+                or self._suspicious_tld(ev)
+                or ev.random_sender
+                or bool(ev.reply_to_domain and ev.reply_to_domain != ev.from_domain)
+                or (brand is not None and brand_in_name and not domain_has_brand)
+                or (domain_age_days is not None and domain_age_days < NEW_DOMAIN_DAYS)
+            )
+            if discriminating:
+                return Verdict(max(score, DELETE_THRESHOLD), "delete", tuple(reasons), True)
         if score >= DELETE_THRESHOLD and fraud_signal:
             if allowed:
                 return Verdict(score, "review", tuple(reasons), fraud_signal)
