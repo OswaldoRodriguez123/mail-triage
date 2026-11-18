@@ -2,3 +2,4 @@
 amazon amazon.com.mx
 mercadolibre mercadolibre.cl
 mercadolibre mercadolibre.com.ar
+rappi rappimail.com
