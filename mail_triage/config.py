@@ -6,6 +6,7 @@ from pathlib import Path
 CONFIG_FILENAME = "config.toml"
 DEFAULT_MAX_PER_RUN = 200
 DEFAULT_INBOX_LOOKBACK_DAYS = 90
+DEFAULT_INBOX_AUDIT_DAYS = 30
 APP_NAME = "mail-triage"
 LEGACY_APP_NAME = "correo-limpio"
 
@@ -17,6 +18,7 @@ class Config:
     client_id: str | None
     max_per_run: int = DEFAULT_MAX_PER_RUN
     inbox_lookback_days: int = DEFAULT_INBOX_LOOKBACK_DAYS
+    inbox_audit_days: int = DEFAULT_INBOX_AUDIT_DAYS
     user_languages: tuple[str, ...] = ("es", "en")
 
 
@@ -44,5 +46,6 @@ def load_config() -> Config:
         client_id=raw.get("client_id") or None,
         max_per_run=int(raw.get("max_per_run", DEFAULT_MAX_PER_RUN)),
         inbox_lookback_days=int(raw.get("inbox_lookback_days", DEFAULT_INBOX_LOOKBACK_DAYS)),
+        inbox_audit_days=int(raw.get("inbox_audit_days", DEFAULT_INBOX_AUDIT_DAYS)),
         user_languages=tuple(raw.get("user_languages", ["es", "en"])),
     )

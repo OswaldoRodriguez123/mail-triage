@@ -70,6 +70,7 @@ def _status() -> int:
         "client_id_present": cfg.client_id is not None,
         "max_per_run": cfg.max_per_run,
         "inbox_lookback_days": cfg.inbox_lookback_days,
+        "inbox_audit_days": cfg.inbox_audit_days,
         "credentials": {
             "graph": keychain.get(REFRESH_TOKEN) is not None,
             "cloudflare": keychain.get(CLOUDFLARE_TOKEN) is not None,
