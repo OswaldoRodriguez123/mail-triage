@@ -134,8 +134,14 @@ This links `skills/mail-triage/` into `~/.config/opencode/skills/`.
 # Review without moving anything: prints the three groups and a 6-character code.
 mail-triage scan --provider outlook
 
+# Audit the Inbox instead: moves nothing, lists suspicious mail to send to Junk.
+mail-triage scan --inbox
+
 # Apply only what was approved in the last report (code valid for 60 minutes).
 mail-triage purge --run <run_id> --code <code> --delete 1,4,7 --rescue 2 --provider outlook
+
+# Items from an Inbox report go to Junk, never to Trash. `--rescue` does not apply.
+mail-triage purge --run <run_id> --code <code> --delete 1,3
 
 # Whole group: delete everything in DELETE.
 mail-triage purge --run <run_id> --code <code> --group delete
@@ -166,10 +172,14 @@ moving messages.
 
 - Scans Junk in batches (200 by default) without repeating messages already
   reviewed.
+- Audits the Inbox on demand (`scan --inbox`, 30 days by default) without
+  moving anything; approved items move to Junk, never to Trash.
 - Scores every email with deterministic rules: brand impersonation,
   authentication failure, random sender, mismatched reply-to, link to a foreign
   domain, urgency, language other than Spanish/English, suspicious TLD and
   domain age (RDAP). Every decision carries its reason.
+- Only treats `<brand>.<tld>` and an explicit official-domain list as the
+  brand's own domain, so `coinbase-security.xyz` counts as impersonation.
 - Uses Clef-flash as a second opinion only for the doubtful band.
 - Moves approved mail to **Trash** or **Inbox** through the active provider.
 - Learns allowed and blocked domains in SQLite: a veto is never removed, and a

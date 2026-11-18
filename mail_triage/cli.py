@@ -22,7 +22,7 @@ from mail_triage.keychain import (
     REFRESH_TOKEN,
     MacKeychain,
 )
-from mail_triage.pipeline import rescue_allowed, scan
+from mail_triage.pipeline import rescue_allowed, scan, scan_inbox
 from mail_triage.purge import feedback, parse_selection, purge, undo
 from mail_triage.rdap import domain_age_days
 from mail_triage.report import load, render
@@ -158,21 +158,33 @@ def _load_report(context, run_id: str):
 
 def _scan(args) -> int:
     context = build_context(args)
-    rescued = rescue_allowed(context.provider, context.store)
-    if rescued:
-        print(f"Rescatados automáticamente a Bandeja: {len(rescued)}.")
+    if not args.inbox:
+        rescued = rescue_allowed(context.provider, context.store)
+        if rescued:
+            print(f"Rescatados automáticamente a Bandeja: {len(rescued)}.")
     max_items = None if args.all else (args.max if args.max is not None else context.cfg.max_per_run)
-    report, code = scan(
-        context.cfg,
-        context.provider,
-        context.store,
-        context.ruleset,
-        context.clef,
-        context.rdap,
-        include_reviewed=args.include_reviewed,
-        max_items=max_items,
-        secret=getattr(context, "plan_secret", None),
-    )
+    if args.inbox:
+        report, code = scan_inbox(
+            context.cfg,
+            context.provider,
+            context.store,
+            context.ruleset,
+            context.clef,
+            max_items=max_items,
+            secret=getattr(context, "plan_secret", None),
+        )
+    else:
+        report, code = scan(
+            context.cfg,
+            context.provider,
+            context.store,
+            context.ruleset,
+            context.clef,
+            context.rdap,
+            include_reviewed=args.include_reviewed,
+            max_items=max_items,
+            secret=getattr(context, "plan_secret", None),
+        )
     print(render(report))
     print(f"\nCódigo {code} (válido 60 min)")
     return 0
@@ -202,7 +214,11 @@ def _purge(args) -> int:
         print(f"Selección inválida: {exc}", file=sys.stderr)
         return 2
 
-    result = purge(context.cfg, context.provider, context.store, report, args.code, selection)
+    try:
+        result = purge(context.cfg, context.provider, context.store, report, args.code, selection)
+    except ValueError as exc:
+        print(f"Selección inválida: {exc}", file=sys.stderr)
+        return 2
     if not result.moved and not result.failed and not result.aborted:
         print("Código inválido o expirado; no se movió nada.", file=sys.stderr)
         return 2
@@ -271,8 +287,10 @@ def build_parser() -> argparse.ArgumentParser:
     scan_parser.add_argument("--all", action="store_true", help="ignora el tope")
     scan_parser.add_argument("--include-reviewed", action="store_true",
                              help="vuelve a mostrar los ya marcados como revisar")
+    scan_parser.add_argument("--inbox", action="store_true",
+                             help="audita la Bandeja en vez de No deseados")
 
-    purge_parser = sub.add_parser("purge", help="mueve lo aprobado a Papelera o Bandeja")
+    purge_parser = sub.add_parser("purge", help="mueve lo aprobado a Papelera (No deseados) o No deseados (Bandeja)")
     purge_parser.add_argument("--provider", default="outlook", help="proveedor (por defecto outlook)")
     purge_parser.add_argument("--run", help="run_id del reporte")
     purge_parser.add_argument("--code", help="código de confirmación")
