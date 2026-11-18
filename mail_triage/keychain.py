@@ -212,7 +212,13 @@ class MacKeychain:
     def set(self, name: str, value: str) -> None:
         # The value never reaches argv; the writer hands the full bytes to the
         # Security framework, which has no 128-character stdin limit.
-        self._write(self._services[0], name, value)
+        try:
+            self._write(self._services[0], name, value)
+        except SecurityUnavailable as exc:
+            raise RuntimeError(f"el Keychain no está disponible en este sistema: {exc}") from exc
 
     def delete(self, name: str) -> None:
-        _keychain_delete(self._services[0], name)
+        try:
+            _keychain_delete(self._services[0], name)
+        except SecurityUnavailable as exc:
+            raise RuntimeError(f"el Keychain no está disponible en este sistema: {exc}") from exc
