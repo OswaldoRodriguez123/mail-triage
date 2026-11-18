@@ -136,5 +136,16 @@ class RulesTest(unittest.TestCase):
                                        "Coinbase lanza una funcion nueva."))
         self.assertNotIn("marca mencionada en el cuerpo", v.reasons)
 
+    def test_newsletter_mentioning_brand_with_auth_failure_is_not_deleted(self):
+        msg = _fake_message("Crypto Weekly", "news@mailer-service.com",
+                            "Weekly crypto digest",
+                            "Coinbase sube hoy. Act now before prices change: "
+                            "https://coinbase.com/prices")
+        msg["internetMessageHeaders"] = [{"name": "Authentication-Results",
+                                          "value": "spf=fail smtp.mailfrom=mailer-service.com"}]
+        v = self.verdict(msg)
+        self.assertEqual(v.bucket, "review")
+        self.assertIn("marca mencionada en el cuerpo", v.reasons)
+
 if __name__ == "__main__":
     unittest.main()

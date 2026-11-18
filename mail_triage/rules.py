@@ -95,7 +95,8 @@ class RuleSet:
         brand_in_name = False
         domain_has_brand = True
         if brand:
-            score += WEIGHTS["brand"]
+            if not brand_from_body:
+                score += WEIGHTS["brand"]
             fraud_signal = True
             reasons.append(
                 "marca mencionada en el cuerpo" if brand_from_body

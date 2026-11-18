@@ -45,6 +45,8 @@ class GraphTest(unittest.TestCase):
         url = self.http.calls[0][1]
         self.assertIn("/mailFolders/inbox/messages", url)
         self.assertIn("receivedDateTime", url)
+        self.assertIn("orderby", url)
+        self.assertIn("desc", url)
 
     def test_list_inbox_reports_more_at_cap(self):
         g = self.client([HttpResponse(200, {"value": [{"id": "1"}],

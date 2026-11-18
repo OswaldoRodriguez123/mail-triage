@@ -131,7 +131,8 @@ class GraphClient:
         for page in self._iter_pages(
             INBOX,
             extra_params={
-                "$filter": f"receivedDateTime ge {since.strftime('%Y-%m-%dT%H:%M:%SZ')}"
+                "$filter": f"receivedDateTime ge {since.strftime('%Y-%m-%dT%H:%M:%SZ')}",
+                "$orderby": "receivedDateTime desc",
             },
         ):
             for message in page.get("value", []):
