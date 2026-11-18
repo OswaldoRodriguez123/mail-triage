@@ -8,6 +8,17 @@ from tests import fixtures
 DATA = Path(__file__).resolve().parents[1] / "mail_triage" / "rules" / "data"
 
 
+def _fake_message(name, address, subject, body):
+    return {
+        "id": "m_brand", "internetMessageId": "<m_brand@example.test>",
+        "subject": subject,
+        "from": {"emailAddress": {"name": name, "address": address}},
+        "body": {"content": body}, "hasAttachments": False,
+        "internetMessageHeaders": [{"name": "Authentication-Results",
+                                    "value": "spf=pass; dkim=pass; dmarc=pass"}],
+    }
+
+
 class RulesTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -94,6 +105,23 @@ class RulesTest(unittest.TestCase):
         # Brand in subject adds 0.35 but no mismatch bonus -> review band.
         self.assertEqual(v.bucket, "review")
         self.assertNotIn("marca suplantada desde dominio ajeno", v.reasons)
+
+    def test_lookalike_domain_containing_brand_is_deleted(self):
+        v = self.verdict(_fake_message("Coinbase", "no-reply@coinbase-security.xyz",
+                                       "Accion requerida", "Verifica tu cuenta en coinbase-security.xyz"))
+        self.assertEqual(v.bucket, "delete")
+        self.assertIn("marca suplantada desde dominio ajeno", v.reasons)
+
+    def test_official_brand_domain_is_not_mismatch(self):
+        v = self.verdict(_fake_message("Coinbase", "no-reply@coinbase.com",
+                                       "Your transaction receipt", "Receipt attached"))
+        self.assertNotIn("marca suplantada desde dominio ajeno", v.reasons)
+
+    def test_brand_display_name_from_free_mail_is_mismatch(self):
+        v = self.verdict(_fake_message("Coinbase", "recovery@gmail.com",
+                                       "Accion requerida", "Verifica tu cuenta"))
+        self.assertIn("marca suplantada desde dominio ajeno", v.reasons)
+        self.assertEqual(v.bucket, "delete")
 
 if __name__ == "__main__":
     unittest.main()

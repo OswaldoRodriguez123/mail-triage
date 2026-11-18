@@ -1,6 +1,13 @@
 import unittest
 
-from mail_triage.evidence import from_message, parse_auth_results, registrable_domain, normalize_for_matching, find_brand
+from mail_triage.evidence import (
+    find_brand,
+    from_message,
+    is_brand_domain,
+    normalize_for_matching,
+    parse_auth_results,
+    registrable_domain,
+)
 from tests import fixtures
 
 
@@ -69,6 +76,25 @@ class EvidenceTest(unittest.TestCase):
 
     def test_find_brand_returns_none_for_clean_text(self):
         self.assertIsNone(find_brand("Hello world", frozenset(["coinbase"])))
+
+
+class BrandDomainTest(unittest.TestCase):
+    SUFFIXES = frozenset({"co.uk", "com.mx"})
+    BAD_TLDS = frozenset({"xyz", "top"})
+
+    def test_accepts_official_domain_and_subdomains(self):
+        self.assertTrue(is_brand_domain("coinbase.com", "coinbase", self.SUFFIXES, self.BAD_TLDS))
+        self.assertTrue(is_brand_domain("mail.coinbase.com", "coinbase", self.SUFFIXES, self.BAD_TLDS))
+        self.assertTrue(is_brand_domain("coinbase.co.uk", "coinbase", self.SUFFIXES, self.BAD_TLDS))
+
+    def test_rejects_lookalike_domains(self):
+        self.assertFalse(is_brand_domain("coinbase-security.xyz", "coinbase", self.SUFFIXES, self.BAD_TLDS))
+        self.assertFalse(is_brand_domain("coinbase.com.evil.tld", "coinbase", self.SUFFIXES, self.BAD_TLDS))
+        self.assertFalse(is_brand_domain("coinbase.xyz", "coinbase", self.SUFFIXES, self.BAD_TLDS))
+
+    def test_accepts_extra_official_domains(self):
+        self.assertTrue(is_brand_domain("amazon.com.mx", "amazon", self.SUFFIXES, self.BAD_TLDS,
+                                        ("amazon.com.mx",)))
 
 
 if __name__ == "__main__":

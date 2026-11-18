@@ -167,6 +167,41 @@ def registrable_domain(host: str) -> str:
     return ".".join(labels[-2:])
 
 
+def is_brand_domain(
+    domain: str,
+    brand: str,
+    suffixes=frozenset(),
+    suspicious_tlds=frozenset(),
+    official=(),
+) -> bool:
+    """Whether `domain` is the brand's own domain, not a lookalike.
+
+    Only the exact registrable domain `<brand>.<tld>`, a subdomain of it, or
+    an explicitly listed official domain count. A domain that merely contains
+    the brand (`coinbase-security.xyz`) does not.
+    """
+    host = (domain or "").strip().strip(".").lower()
+    brand = (brand or "").strip().lower()
+    if not host or not brand:
+        return False
+    registered = registrable_domain(host)
+    for allowed in official or ():
+        allowed = (allowed or "").strip().strip(".").lower()
+        if allowed and (registered == allowed or registered.endswith(f".{allowed}")):
+            return True
+    if not registered.startswith(f"{brand}."):
+        return False
+    rest = registered[len(brand) + 1:]
+    labels = [label for label in rest.split(".") if label]
+    if not labels or len(labels) > 2:
+        return False
+    if len(labels) == 2 and rest not in suffixes:
+        return False
+    if any(label in suspicious_tlds for label in labels):
+        return False
+    return True
+
+
 def is_random_sender(local: str, domain: str) -> bool:
     local = (local or "").lower()
     domain = (domain or "").lower()
