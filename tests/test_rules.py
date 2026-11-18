@@ -128,6 +128,11 @@ class RulesTest(unittest.TestCase):
                                        "Acompana a tus seres queridos", "Hola"))
         self.assertNotIn("marca suplantada", v.reasons)
 
+    def test_known_official_extra_domain_is_not_mismatch(self):
+        v = self.verdict(_fake_message("Recibos de Rappi", "support@rappimail.com",
+                                       "Tu pedido ha sido cancelado", "Cancelamos tu pedido."))
+        self.assertNotIn("marca suplantada desde dominio ajeno", v.reasons)
+
     def test_brand_only_in_body_is_review_with_body_reason(self):
         v = self.verdict(_fake_message("Notificaciones", "billing@mailer-service.com",
                                        "Tienes una recompensa pendiente",
