@@ -31,6 +31,11 @@ class KeychainTest(unittest.TestCase):
         store = MacKeychain(reader=mock.Mock(return_value=None))
         self.assertIsNone(store.get("refresh-token"))
 
+    def test_security_unavailable_returns_none(self):
+        from mail_triage.keychain import SecurityUnavailable
+        reader = mock.Mock(side_effect=SecurityUnavailable("Security framework no disponible"))
+        self.assertIsNone(MacKeychain(reader=reader).get("refresh-token"))
+
 
 class _FakeSecurity:
     def __init__(self, find_statuses, add_status=0, modify_status=0):

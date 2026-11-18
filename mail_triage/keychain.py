@@ -5,6 +5,10 @@ from typing import Protocol
 SERVICE = "mail-triage"
 LEGACY_SERVICE = "correo-limpio"
 
+
+class SecurityUnavailable(RuntimeError):
+    """The macOS Security framework is not present (e.g. non-macOS CI)."""
+
 REFRESH_TOKEN = "refresh-token"
 CLOUDFLARE_ACCOUNT_ID = "cloudflare-account-id"
 CLOUDFLARE_TOKEN = "cloudflare-token"
@@ -52,13 +56,17 @@ def _keychain_add(lib, service_bytes, account_bytes, data, buffer):
 
 
 def _security():
-    """The macOS Security framework, loaded lazily so non-macOS imports work."""
+    """The macOS Security framework, loaded lazily so non-macOS imports work.
+
+    Raises SecurityUnavailable when the framework is missing (non-macOS), so
+    callers can treat the Keychain as "not configured" instead of crashing.
+    """
     global _SECURITY
     if _SECURITY is not None:
         return _SECURITY
     path = ctypes.util.find_library("Security")
     if not path:
-        raise RuntimeError("Security framework no disponible")
+        raise SecurityUnavailable("Security framework no disponible")
     lib = ctypes.CDLL(path)
     lib.SecKeychainAddGenericPassword.restype = ctypes.c_int32
     lib.SecKeychainAddGenericPassword.argtypes = [
@@ -192,7 +200,11 @@ class MacKeychain:
 
     def get(self, name: str) -> str | None:
         for service in self._services:
-            value = self._read(service, name)
+            try:
+                value = self._read(service, name)
+            except SecurityUnavailable:
+                # Non-macOS (CI): the Keychain simply isn't there, like the old CLI.
+                return None
             if value is not None:
                 return value
         return None
@@ -200,7 +212,13 @@ class MacKeychain:
     def set(self, name: str, value: str) -> None:
         # The value never reaches argv; the writer hands the full bytes to the
         # Security framework, which has no 128-character stdin limit.
-        self._write(self._services[0], name, value)
+        try:
+            self._write(self._services[0], name, value)
+        except SecurityUnavailable as exc:
+            raise RuntimeError(f"el Keychain no está disponible en este sistema: {exc}") from exc
 
     def delete(self, name: str) -> None:
-        _keychain_delete(self._services[0], name)
+        try:
+            _keychain_delete(self._services[0], name)
+        except SecurityUnavailable as exc:
+            raise RuntimeError(f"el Keychain no está disponible en este sistema: {exc}") from exc
