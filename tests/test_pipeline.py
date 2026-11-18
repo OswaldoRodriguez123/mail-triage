@@ -155,6 +155,28 @@ class PipelineTest(unittest.TestCase):
         report, _ = self.scan()
         self.assertEqual(len(report.items), 1)
 
+    def test_known_brand_promo_survives_clef_fraud(self):
+        class FraudClef(FakeClef):
+            def evaluate(self, ev):
+                super().evaluate(ev)
+                return ClefDecision("fraude", 0.95, 0.1, {})
+
+        self.clef = FraudClef()
+        self.graph.messages = [{
+            "id": "m_rappi_promo", "internetMessageId": "<m_rappi_promo@rappimail.com>",
+            "subject": "Descuentos de hoy en tus tiendas",
+            "from": {"emailAddress": {"name": "Recibos de Rappi", "address": "promo@rappimail.com"}},
+            "body": {"content": "Promociones exclusivas de hoy. Unsubscribe."},
+            "hasAttachments": False,
+            "internetMessageHeaders": [{"name": "Authentication-Results",
+                                        "value": "spf=pass; dkim=pass; dmarc=pass"}],
+        }]
+        report, _ = self.scan()
+        # Known promo (official brand domain) must stay review even if Clef
+        # calls it high-fraud: it must never even reach Clef.
+        self.assertEqual(report.items[0].bucket, "review")
+        self.assertEqual(self.clef.calls, 0)
+
     def test_clef_verdict_cached_per_domain(self):
         first = fixtures.soda_random()
         second = dict(first)

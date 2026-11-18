@@ -179,7 +179,13 @@ class RuleSet:
         if blocked and not allowed:
             return Verdict(1.0, "delete", ("dominio bloqueado",), True)
         if promo_hint and known_sender:
-            return Verdict(score, "review", tuple(reasons) or ("promoción",), fraud_signal)
+            # Known promos must always carry a "promoci" marker so `_is_protected`
+            # and `refine()` keep them out of Clef's reach, even when other
+            # reasons (e.g. brand text) are present.
+            promo_reasons = list(reasons)
+            if not any("promoci" in r.lower() for r in promo_reasons):
+                promo_reasons.append("promoción")
+            return Verdict(score, "review", tuple(promo_reasons), fraud_signal)
         if promo_hint and promo_unknown:
             score += WEIGHTS["promo_unknown"]
             reasons.append("promo de dominio desconocido")
