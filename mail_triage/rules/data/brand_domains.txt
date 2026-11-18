@@ -1,0 +1,4 @@
+# Dominios oficiales extra por marca (marca dominio), uno por línea.
+amazon amazon.com.mx
+mercadolibre mercadolibre.cl
+mercadolibre mercadolibre.com.ar

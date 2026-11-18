@@ -63,12 +63,16 @@ def purge(cfg, graph, store, report, code, selection: Selection, now=None) -> Pu
 
     now = now or datetime.now(timezone.utc)
     now_iso = now.isoformat(timespec="seconds")
+    inbox_mode = report.mode.startswith("inbox")
+    if inbox_mode and selection.rescue:
+        raise ValueError("--rescue no aplica a reportes de Bandeja")
     by_n = {item.n: item for item in report.items}
     moved: list[tuple[int, str]] = []
     failed: list[tuple[int, str]] = []
     consecutive = 0
 
-    plan = [(n, DELETED, "delete") for n in sorted(selection.delete)]
+    delete_destination = JUNK if inbox_mode else DELETED
+    plan = [(n, delete_destination, "delete") for n in sorted(selection.delete)]
     plan += [(n, INBOX, "rescue") for n in sorted(selection.rescue)]
 
     known_rules = store.rules()
@@ -99,24 +103,29 @@ def purge(cfg, graph, store, report, code, selection: Selection, now=None) -> Pu
             "purge",
             now_iso,
         )
-        if expected_bucket == "delete":
+        if expected_bucket == "delete" and not inbox_mode:
             _learn_block(store, item, known_rules, inbox_domains)
     return PurgeResult(moved, failed, False)
 
 
 def undo(cfg, graph, store, report, message_n: int | None = None) -> PurgeResult:
+    # An inbox purge moved mail to Junk, so undo must restore it to the Inbox.
+    # It also never learned rules, so rules must not be touched.
+    inbox_mode = report.mode.startswith("inbox")
+    destination = INBOX if inbox_mode else JUNK
     targets = [item for item in report.items if message_n is None or item.n == message_n]
     moved: list[tuple[int, str]] = []
     failed: list[tuple[int, str]] = []
     for item in targets:
         try:
-            graph.move(item.message_id, JUNK)
+            graph.move(item.message_id, destination)
         except GraphError as exc:
             failed.append((item.n, str(exc.status)))
             continue
-        moved.append((item.n, JUNK))
-        store.degrade_auto(item.domain)
-        store.remove_rule(item.domain, "purge")
+        moved.append((item.n, destination))
+        if not inbox_mode:
+            store.degrade_auto(item.domain)
+            store.remove_rule(item.domain, "purge")
     return PurgeResult(moved, failed, False)
 
 

@@ -9,6 +9,7 @@ class SkillDocTest(unittest.TestCase):
         self.assertIn("description:", text)
         self.assertIn("Nunca ejecutes `purge` sin", text)
         self.assertIn("--code", text)
+        self.assertIn("--inbox", text)
 
 
 if __name__ == "__main__":

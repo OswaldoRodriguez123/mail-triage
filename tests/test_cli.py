@@ -10,7 +10,7 @@ from unittest import mock
 from mail_triage import cli
 from mail_triage.auth import DeviceCode
 from mail_triage.cli import main
-from mail_triage.report import build_report
+from mail_triage.report import ReportItem, build_report
 
 
 class StatusTest(unittest.TestCase):
@@ -39,6 +39,17 @@ class CliWiringTest(unittest.TestCase):
     def test_feedback_requires_verdict(self):
         self.assertEqual(self.run_main(["feedback", "run1", "1"])[0], 2)
 
+    def test_undo_of_inbox_report_says_inbox(self):
+        report, _ = build_report([], False, "inbox")
+        context = mock.Mock()
+        context.cfg.state_dir = "/tmp"
+        with mock.patch.object(cli, "build_context", return_value=context), \
+             mock.patch.object(cli, "load", return_value=report), \
+             mock.patch.object(cli, "undo", return_value=SimpleNamespace(moved=[], failed=[])):
+            rc, out = self.run_main(["undo", "--run", report.run_id])
+        self.assertEqual(rc, 0)
+        self.assertIn("Bandeja", out)
+
     def test_login_prints_device_code(self):
         with TemporaryDirectory() as tmp, \
              mock.patch.object(cli, "load_config") as cfg, \
@@ -62,6 +73,30 @@ class CliWiringTest(unittest.TestCase):
         self.assertEqual(rc, 0)
         self.assertIn(code, out)
         self.assertIn("Código", out)
+
+    def test_scan_inbox_calls_inbox_pipeline_without_rescue(self):
+        report, code = build_report([], False, "inbox")
+        context = mock.Mock()
+        context.cfg.max_per_run = 200
+        with mock.patch.object(cli, "scan_inbox", return_value=(report, code)) as inbox_scan, \
+             mock.patch.object(cli, "rescue_allowed", return_value=[]) as rescue, \
+             mock.patch.object(cli, "build_context", return_value=context):
+            rc, out = self.run_main(["scan", "--inbox"])
+        self.assertEqual(rc, 0)
+        inbox_scan.assert_called_once()
+        rescue.assert_not_called()
+
+    def test_purge_rescue_on_inbox_report_is_rejected(self):
+        with TemporaryDirectory() as tmp:
+            report, code = build_report(
+                [ReportItem(1, "m1", "a", "x@y.test", "y.test", "rescue", 0.1, (), None)],
+                False, "inbox")
+            with mock.patch.object(cli, "build_context") as context:
+                context.return_value.cfg = SimpleNamespace(state_dir=tmp)
+                with mock.patch.object(cli, "load", return_value=report):
+                    rc, _ = self.run_main(
+                        ["purge", "--run", report.run_id, "--code", code, "--rescue", "1"])
+        self.assertEqual(rc, 2)
 
 
 if __name__ == "__main__":

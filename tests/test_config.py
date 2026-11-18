@@ -15,6 +15,7 @@ class ConfigTest(unittest.TestCase):
             self.assertEqual(cfg.state_dir, Path(tmp) / ".local" / "state" / "mail-triage")
             self.assertEqual(cfg.max_per_run, 200)
             self.assertEqual(cfg.inbox_lookback_days, 90)
+            self.assertEqual(cfg.inbox_audit_days, 30)
             self.assertIsNone(cfg.client_id)
 
 

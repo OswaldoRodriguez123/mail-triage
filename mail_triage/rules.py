@@ -2,7 +2,7 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 
-from mail_triage.evidence import Evidence, find_brand, normalize_for_matching
+from mail_triage.evidence import Evidence, find_brand, is_brand_domain, normalize_for_matching
 
 WEIGHTS = {
     "brand": 0.35,
@@ -42,11 +42,12 @@ class Verdict:
 
 
 class RuleSet:
-    def __init__(self, brands, urgency, tlds, suffixes) -> None:
+    def __init__(self, brands, urgency, tlds, suffixes, official_domains=None) -> None:
         self.brands = frozenset(brands)
         self.urgency = tuple(urgency)
         self.tlds = frozenset(tlds)
         self.suffixes = frozenset(suffixes)
+        self.official_domains = dict(official_domains or {})
 
     @classmethod
     def load(cls, data_dir: Path) -> "RuleSet":
@@ -56,6 +57,7 @@ class RuleSet:
             urgency=_read_lines(data_dir / "urgency.txt"),
             tlds=_read_lines(data_dir / "tlds.txt"),
             suffixes=_read_lines(data_dir / "suffixes.txt"),
+            official_domains=_read_brand_domains(data_dir / "brand_domains.txt"),
         )
 
     def evaluate(
@@ -80,20 +82,38 @@ class RuleSet:
         transactional = _contains_any(haystack, TRANSACTIONAL_WORDS)
 
         brand = ev.brand or find_brand(f"{ev.from_name} {ev.subject}", self.brands)
+        brand_from_body = False
+        if not brand:
+            body_haystack = f"{ev.text} {' '.join(ev.link_domains)}"
+            candidate = find_brand(body_haystack, self.brands)
+            if candidate and not is_brand_domain(
+                ev.from_domain, candidate, self.suffixes, self.tlds,
+                self.official_domains.get(candidate, ()),
+            ):
+                brand = candidate
+                brand_from_body = True
         brand_in_name = False
         domain_has_brand = True
         if brand:
-            score += WEIGHTS["brand"]
+            if not brand_from_body:
+                score += WEIGHTS["brand"]
             fraud_signal = True
-            reasons.append("marca suplantada")
+            reasons.append(
+                "marca mencionada en el cuerpo" if brand_from_body
+                else "marca suplantada"
+            )
             # Brand claimed in display name but sent from an unrelated domain.
-            normalized_name = normalize_for_matching(ev.from_name or "").lower()
-            brand_in_name = find_brand(normalized_name, {brand}) is not None
-            domain_has_brand = brand in (ev.from_domain or "").lower()
-            if brand_in_name and not domain_has_brand:
-                score += WEIGHTS["brand_mismatch"]
-                fraud_signal = True
-                reasons.append("marca suplantada desde dominio ajeno")
+            if not brand_from_body:
+                normalized_name = normalize_for_matching(ev.from_name or "").lower()
+                brand_in_name = find_brand(normalized_name, {brand}) is not None
+                domain_has_brand = is_brand_domain(
+                    ev.from_domain, brand, self.suffixes, self.tlds,
+                    self.official_domains.get(brand, ()),
+                )
+                if brand_in_name and not domain_has_brand:
+                    score += WEIGHTS["brand_mismatch"]
+                    fraud_signal = True
+                    reasons.append("marca suplantada desde dominio ajeno")
 
         if ev.auth.failed:
             score += WEIGHTS["auth_fail"]
@@ -188,6 +208,17 @@ def _read_lines(path: Path) -> list[str]:
         if line:
             lines.append(line)
     return lines
+
+
+def _read_brand_domains(path: Path) -> dict[str, tuple[str, ...]]:
+    mapping: dict[str, list[str]] = {}
+    for line in _read_lines(path):
+        parts = line.split()
+        if len(parts) != 2:
+            continue
+        brand, domain = parts
+        mapping.setdefault(brand, []).append(domain)
+    return {brand: tuple(domains) for brand, domains in mapping.items()}
 
 
 def _matches(domain: str, domains) -> bool:

@@ -82,9 +82,11 @@ class GraphClient:
             raise GraphError(response.status, response.text)
         return response.json
 
-    def _iter_pages(self, folder: str, page_size: int = 50):
+    def _iter_pages(self, folder: str, page_size: int = 50, extra_params: dict | None = None):
         path = f"/me/mailFolders/{folder}/messages"
         params = {"$select": SELECT_FIELDS, "$top": page_size}
+        if extra_params:
+            params.update(extra_params)
         url: str | None = self._url(path, params)
         while url:
             response = self._http.request(
@@ -110,6 +112,29 @@ class GraphClient:
     def list_junk(self, max_items, skip_ids) -> tuple[list[dict], bool]:
         messages: list[dict] = []
         for page in self._iter_pages(JUNK):
+            for message in page.get("value", []):
+                if message.get("id") in skip_ids:
+                    continue
+                if max_items is not None and len(messages) >= max_items:
+                    return messages, True
+                messages.append(message)
+            if page.get("@odata.nextLink"):
+                if max_items is not None and len(messages) >= max_items:
+                    return messages, True
+                continue
+            return messages, False
+        return messages, False
+
+    def list_inbox(self, lookback_days: int, max_items, skip_ids) -> tuple[list[dict], bool]:
+        since = datetime.now(timezone.utc) - timedelta(days=lookback_days)
+        messages: list[dict] = []
+        for page in self._iter_pages(
+            INBOX,
+            extra_params={
+                "$filter": f"receivedDateTime ge {since.strftime('%Y-%m-%dT%H:%M:%SZ')}",
+                "$orderby": "receivedDateTime desc",
+            },
+        ):
             for message in page.get("value", []):
                 if message.get("id") in skip_ids:
                     continue

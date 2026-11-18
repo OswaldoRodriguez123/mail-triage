@@ -26,6 +26,13 @@ class ProviderTest(unittest.TestCase):
         self.assertEqual(provider.list_junk(10, set()), ([], False))
         graph.list_junk.assert_called_once_with(10, set())
 
+    def test_outlook_list_inbox_delegates(self):
+        graph = mock.Mock()
+        graph.list_inbox.return_value = ([{"id": "1"}], False)
+        provider = OutlookProvider(graph)
+        self.assertEqual(provider.list_inbox(30, 10, set()), ([{"id": "1"}], False))
+        graph.list_inbox.assert_called_once_with(30, 10, set())
+
 
 if __name__ == "__main__":
     unittest.main()

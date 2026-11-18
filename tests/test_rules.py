@@ -8,6 +8,17 @@ from tests import fixtures
 DATA = Path(__file__).resolve().parents[1] / "mail_triage" / "rules" / "data"
 
 
+def _fake_message(name, address, subject, body):
+    return {
+        "id": "m_brand", "internetMessageId": "<m_brand@example.test>",
+        "subject": subject,
+        "from": {"emailAddress": {"name": name, "address": address}},
+        "body": {"content": body}, "hasAttachments": False,
+        "internetMessageHeaders": [{"name": "Authentication-Results",
+                                    "value": "spf=pass; dkim=pass; dmarc=pass"}],
+    }
+
+
 class RulesTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -94,6 +105,47 @@ class RulesTest(unittest.TestCase):
         # Brand in subject adds 0.35 but no mismatch bonus -> review band.
         self.assertEqual(v.bucket, "review")
         self.assertNotIn("marca suplantada desde dominio ajeno", v.reasons)
+
+    def test_lookalike_domain_containing_brand_is_deleted(self):
+        v = self.verdict(_fake_message("Coinbase", "no-reply@coinbase-security.xyz",
+                                       "Accion requerida", "Verifica tu cuenta en coinbase-security.xyz"))
+        self.assertEqual(v.bucket, "delete")
+        self.assertIn("marca suplantada desde dominio ajeno", v.reasons)
+
+    def test_official_brand_domain_is_not_mismatch(self):
+        v = self.verdict(_fake_message("Coinbase", "no-reply@coinbase.com",
+                                       "Your transaction receipt", "Receipt attached"))
+        self.assertNotIn("marca suplantada desde dominio ajeno", v.reasons)
+
+    def test_brand_display_name_from_free_mail_is_mismatch(self):
+        v = self.verdict(_fake_message("Coinbase", "recovery@gmail.com",
+                                       "Accion requerida", "Verifica tu cuenta"))
+        self.assertIn("marca suplantada desde dominio ajeno", v.reasons)
+        self.assertEqual(v.bucket, "delete")
+
+    def test_brand_only_in_body_is_review_with_body_reason(self):
+        v = self.verdict(_fake_message("Notificaciones", "billing@mailer-service.com",
+                                       "Tienes una recompensa pendiente",
+                                       "Reclama tu recompensa de Coinbase aqui: https://claim-reward.top/r"))
+        self.assertEqual(v.bucket, "review")
+        self.assertIn("marca mencionada en el cuerpo", v.reasons)
+
+    def test_brand_in_body_from_official_domain_is_not_penalized(self):
+        v = self.verdict(_fake_message("Notificaciones", "no-reply@coinbase.com",
+                                       "Novedades de la semana",
+                                       "Coinbase lanza una funcion nueva."))
+        self.assertNotIn("marca mencionada en el cuerpo", v.reasons)
+
+    def test_newsletter_mentioning_brand_with_auth_failure_is_not_deleted(self):
+        msg = _fake_message("Crypto Weekly", "news@mailer-service.com",
+                            "Weekly crypto digest",
+                            "Coinbase sube hoy. Act now before prices change: "
+                            "https://coinbase.com/prices")
+        msg["internetMessageHeaders"] = [{"name": "Authentication-Results",
+                                          "value": "spf=fail smtp.mailfrom=mailer-service.com"}]
+        v = self.verdict(msg)
+        self.assertEqual(v.bucket, "review")
+        self.assertIn("marca mencionada en el cuerpo", v.reasons)
 
 if __name__ == "__main__":
     unittest.main()

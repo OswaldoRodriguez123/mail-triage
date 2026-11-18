@@ -46,6 +46,16 @@ class ReportTest(unittest.TestCase):
         self.assertIn("marca suplantada", text)
         self.assertIn("borrar", text.lower())
 
+    def test_render_inbox_mode_says_move_to_junk(self):
+        report, _ = build_report([item(bucket="delete"), item(n=2, bucket="rescue")], False, "inbox")
+        text = render(report)
+        self.assertIn("MOVER A NO DESEADOS", text)
+        self.assertNotIn("RESCATAR", text)
+
+    def test_render_junk_mode_keeps_titles(self):
+        report, _ = build_report([item(bucket="delete")], False, "rules")
+        self.assertIn("BORRAR", render(report))
+
 
 if __name__ == "__main__":
     unittest.main()
