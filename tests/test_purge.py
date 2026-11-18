@@ -39,6 +39,42 @@ class PurgeTest(unittest.TestCase):
         self.report_expires = self.report.expires_at
         self.graph = FakeGraph()
 
+    def test_inbox_report_moves_delete_to_junk(self):
+        report, code = build_report(
+            [ReportItem(1, "m1", "a", "x@y.test", "y.test", "delete", 0.9, (), None)],
+            False, "inbox")
+        purge(self.cfg, self.graph, self.store, report, code, Selection(delete={1}, rescue=set()))
+        self.assertEqual(self.graph.moves, [("m1", "junkemail")])
+
+    def test_inbox_clef_report_moves_delete_to_junk(self):
+        report, code = build_report(
+            [ReportItem(1, "m1", "a", "x@y.test", "y.test", "delete", 0.9, (), None)],
+            False, "inbox+clef")
+        purge(self.cfg, self.graph, self.store, report, code, Selection(delete={1}, rescue=set()))
+        self.assertEqual(self.graph.moves, [("m1", "junkemail")])
+
+    def test_inbox_report_rejects_rescue(self):
+        report, code = build_report(
+            [ReportItem(1, "m1", "a", "x@y.test", "y.test", "rescue", 0.1, (), None)],
+            False, "inbox")
+        with self.assertRaises(ValueError):
+            purge(self.cfg, self.graph, self.store, report, code, Selection(delete=set(), rescue={1}))
+        self.assertEqual(self.graph.moves, [])
+
+    def test_junk_report_still_moves_delete_to_trash(self):
+        report, code = build_report(
+            [ReportItem(1, "m1", "a", "x@y.test", "y.test", "delete", 0.9, ("marca suplantada",), None)],
+            False, "rules")
+        purge(self.cfg, self.graph, self.store, report, code, Selection(delete={1}, rescue=set()))
+        self.assertEqual(self.graph.moves, [("m1", "deleteditems")])
+
+    def test_inbox_report_does_not_learn_block_rules(self):
+        report, code = build_report(
+            [ReportItem(1, "m1", "a", "x@y.test", "y.test", "delete", 0.9, ("marca suplantada",), None)],
+            False, "inbox")
+        purge(self.cfg, self.graph, self.store, report, code, Selection(delete={1}, rescue=set()))
+        self.assertNotIn("y.test", self.store.rules())
+
     def test_wrong_code_moves_nothing(self):
         result = purge(self.cfg, self.graph, self.store, self.report, "WRONG",
                        Selection(delete={1}, rescue=set()))

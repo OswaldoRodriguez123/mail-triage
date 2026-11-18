@@ -63,12 +63,16 @@ def purge(cfg, graph, store, report, code, selection: Selection, now=None) -> Pu
 
     now = now or datetime.now(timezone.utc)
     now_iso = now.isoformat(timespec="seconds")
+    inbox_mode = report.mode.startswith("inbox")
+    if inbox_mode and selection.rescue:
+        raise ValueError("--rescue no aplica a reportes de Bandeja")
     by_n = {item.n: item for item in report.items}
     moved: list[tuple[int, str]] = []
     failed: list[tuple[int, str]] = []
     consecutive = 0
 
-    plan = [(n, DELETED, "delete") for n in sorted(selection.delete)]
+    delete_destination = JUNK if inbox_mode else DELETED
+    plan = [(n, delete_destination, "delete") for n in sorted(selection.delete)]
     plan += [(n, INBOX, "rescue") for n in sorted(selection.rescue)]
 
     known_rules = store.rules()
@@ -99,7 +103,7 @@ def purge(cfg, graph, store, report, code, selection: Selection, now=None) -> Pu
             "purge",
             now_iso,
         )
-        if expected_bucket == "delete":
+        if expected_bucket == "delete" and not inbox_mode:
             _learn_block(store, item, known_rules, inbox_domains)
     return PurgeResult(moved, failed, False)
 
