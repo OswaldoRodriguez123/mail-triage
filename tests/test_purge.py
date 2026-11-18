@@ -75,6 +75,17 @@ class PurgeTest(unittest.TestCase):
         purge(self.cfg, self.graph, self.store, report, code, Selection(delete={1}, rescue=set()))
         self.assertNotIn("y.test", self.store.rules())
 
+    def test_undo_inbox_report_returns_to_inbox_and_keeps_rules(self):
+        self.store.upsert_rule("y.test", "block", "purge")
+        report, code = build_report(
+            [ReportItem(1, "m1", "a", "x@y.test", "y.test", "delete", 0.9, ("marca suplantada",), None)],
+            False, "inbox")
+        purge(self.cfg, self.graph, self.store, report, code, Selection(delete={1}, rescue=set()))
+        self.graph.moves.clear()
+        undo(self.cfg, self.graph, self.store, report, message_n=1)
+        self.assertEqual(self.graph.moves, [("m1", "inbox")])
+        self.assertEqual(self.store.rules().get("y.test"), "block")
+
     def test_wrong_code_moves_nothing(self):
         result = purge(self.cfg, self.graph, self.store, self.report, "WRONG",
                        Selection(delete={1}, rescue=set()))

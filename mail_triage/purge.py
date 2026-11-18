@@ -109,18 +109,23 @@ def purge(cfg, graph, store, report, code, selection: Selection, now=None) -> Pu
 
 
 def undo(cfg, graph, store, report, message_n: int | None = None) -> PurgeResult:
+    # An inbox purge moved mail to Junk, so undo must restore it to the Inbox.
+    # It also never learned rules, so rules must not be touched.
+    inbox_mode = report.mode.startswith("inbox")
+    destination = INBOX if inbox_mode else JUNK
     targets = [item for item in report.items if message_n is None or item.n == message_n]
     moved: list[tuple[int, str]] = []
     failed: list[tuple[int, str]] = []
     for item in targets:
         try:
-            graph.move(item.message_id, JUNK)
+            graph.move(item.message_id, destination)
         except GraphError as exc:
             failed.append((item.n, str(exc.status)))
             continue
-        moved.append((item.n, JUNK))
-        store.degrade_auto(item.domain)
-        store.remove_rule(item.domain, "purge")
+        moved.append((item.n, destination))
+        if not inbox_mode:
+            store.degrade_auto(item.domain)
+            store.remove_rule(item.domain, "purge")
     return PurgeResult(moved, failed, False)
 
 

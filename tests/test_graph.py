@@ -55,6 +55,12 @@ class GraphTest(unittest.TestCase):
         self.assertEqual(len(messages), 1)
         self.assertTrue(has_more)
 
+    def test_list_inbox_does_not_report_more_on_final_page(self):
+        g = self.client([HttpResponse(200, {"value": [{"id": "1"}]}, "")])
+        messages, has_more = g.list_inbox(30, max_items=1, skip_ids=set())
+        self.assertEqual(len(messages), 1)
+        self.assertFalse(has_more)
+
     def test_move_posts_destination(self):
         g = self.client([HttpResponse(200, {}, "")])
         g.move("m1", DELETED)
