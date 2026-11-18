@@ -8,6 +8,7 @@ MODEL = "@cf/cloudflare/clef-flash"
 DEFAULT_BASE = "https://api.cloudflare.com/client/v4"
 
 DELETE_FRAUD_PROB = 0.90
+UNKNOWN_PROMO_FRAUD_PROB = 0.70
 RESCUE_EXPECTED_PROB = 0.70
 RESCUE_MAX_FRAUD_PROB = 0.30
 PROMO_CATEGORIES = frozenset({"promocion", "boletin"})
@@ -68,7 +69,16 @@ def refine(verdict: Verdict, decision: ClefDecision | None) -> Verdict:
     if getattr(verdict, "locked", False):
         return verdict
     reasons_text = " ".join(verdict.reasons or ()).lower()
-    if "permitido" in reasons_text or "promoci" in reasons_text or "veto" in reasons_text:
+    if "permitido" in reasons_text or "veto" in reasons_text:
+        return verdict
+    if "promo de dominio desconocido" in reasons_text and decision.fraud_prob >= UNKNOWN_PROMO_FRAUD_PROB:
+        return Verdict(
+            max(verdict.score, DELETE_FRAUD_PROB),
+            "delete",
+            verdict.reasons + ("clef: fraude",),
+            True,
+        )
+    if "promoci" in reasons_text:
         return verdict
     if decision.fraud_prob >= DELETE_FRAUD_PROB:
         return Verdict(

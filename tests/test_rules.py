@@ -38,7 +38,48 @@ class RulesTest(unittest.TestCase):
         self.assertEqual(v.bucket, "review")
         self.assertFalse(v.fraud_signal)
 
-    def test_promo_is_never_deleted_even_from_new_domain(self):
+    def test_unknown_promo_alone_is_review(self):
+        v = self.verdict(_fake_message("LaserAway", "alert@cathologistic.com",
+                                       "75% Off Laser Hair Removal", "Unsubscribe now"))
+        self.assertEqual(v.bucket, "review")
+        self.assertIn("promo de dominio desconocido", v.reasons)
+
+    def test_unknown_promo_with_discriminating_signal_deletes(self):
+        msg = _fake_message("Costco Reminder", "alert@cathologistic.com",
+                            "FINAL ACTION REQUIRED: Renewal Due Tonight", "Unsubscribe 50% off")
+        msg["internetMessageHeaders"] = [{"name": "Authentication-Results",
+                                          "value": "spf=fail; dkim=fail; dmarc=fail"}]
+        v = self.verdict(msg)
+        self.assertEqual(v.bucket, "delete")
+        self.assertIn("promo de dominio desconocido", v.reasons)
+
+    def test_unknown_promo_with_foreign_link_only_stays_review(self):
+        v = self.verdict(_fake_message("Tienda Nuevo", "news@tienda-inedita.example",
+                                       "50% off this week",
+                                       "Unsubscribe: https://click.tracker-example.net/x"))
+        self.assertEqual(v.bucket, "review")
+        self.assertIn("promo de dominio desconocido", v.reasons)
+
+    def test_known_promo_is_review_not_unknown(self):
+        v = self.verdict(_fake_message("Puntos Cencosud", "puntos@email.puntoscencosud.cl",
+                                       "Aprovecha nuestras promociones", "Unsubscribe"),
+                         allow_domains={"email.puntoscencosud.cl"})
+        self.assertEqual(v.bucket, "review")
+        self.assertNotIn("promo de dominio desconocido", v.reasons)
+
+    def test_brand_official_domain_promo_is_known(self):
+        v = self.verdict(_fake_message("Rappi", "promo@rappimail.com",
+                                       "Descuentos de hoy", "Unsubscribe"))
+        self.assertEqual(v.bucket, "review")
+        self.assertNotIn("promo de dominio desconocido", v.reasons)
+
+    def test_unknown_promo_with_urgency_only_stays_review(self):
+        v = self.verdict(_fake_message("Flash Sale", "deals@oferta-rara.example",
+                                       "Last hours: 50% off!", "Unsubscribe"))
+        self.assertEqual(v.bucket, "review")
+        self.assertIn("promo de dominio desconocido", v.reasons)
+
+    def test_unknown_promo_without_discriminating_signals_stays_review(self):
         v = self.verdict(fixtures.promo_newsletter())
         self.assertEqual(v.bucket, "review")
 

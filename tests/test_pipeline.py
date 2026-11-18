@@ -146,13 +146,36 @@ class PipelineTest(unittest.TestCase):
 
     def test_clef_only_refines_review_band(self):
         self.scan()
-        # 8 fixtures - 3 delete (netflix, vivo, medicare lookalikes) - 1 rescue - 1 promo locked
-        self.assertEqual(self.clef.calls, 3)
+        # 8 fixtures - 3 delete (netflix, vivo, medicare lookalikes) - 1 rescue;
+        # the unknown-domain promo is no longer promo-protected and goes through Clef.
+        self.assertEqual(self.clef.calls, 4)
 
     def test_duplicate_message_ids_counted_once(self):
         self.graph.messages = [fixtures.netflix_phish(), fixtures.netflix_phish()]
         report, _ = self.scan()
         self.assertEqual(len(report.items), 1)
+
+    def test_known_brand_promo_survives_clef_fraud(self):
+        class FraudClef(FakeClef):
+            def evaluate(self, ev):
+                super().evaluate(ev)
+                return ClefDecision("fraude", 0.95, 0.1, {})
+
+        self.clef = FraudClef()
+        self.graph.messages = [{
+            "id": "m_rappi_promo", "internetMessageId": "<m_rappi_promo@rappimail.com>",
+            "subject": "Descuentos de hoy en tus tiendas",
+            "from": {"emailAddress": {"name": "Recibos de Rappi", "address": "promo@rappimail.com"}},
+            "body": {"content": "Promociones exclusivas de hoy. Unsubscribe."},
+            "hasAttachments": False,
+            "internetMessageHeaders": [{"name": "Authentication-Results",
+                                        "value": "spf=pass; dkim=pass; dmarc=pass"}],
+        }]
+        report, _ = self.scan()
+        # Known promo (official brand domain) must stay review even if Clef
+        # calls it high-fraud: it must never even reach Clef.
+        self.assertEqual(report.items[0].bucket, "review")
+        self.assertEqual(self.clef.calls, 0)
 
     def test_clef_verdict_cached_per_domain(self):
         first = fixtures.soda_random()

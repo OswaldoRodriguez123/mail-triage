@@ -28,7 +28,7 @@ Si el usuario dice que hay fraudes en la Bandeja (no en No deseados):
 - Nunca ejecutes `purge` sin la aprobación explícita del usuario a números concretos y sin el `--code` vigente de ese `run_id`.
 - Prohibido inventar aprobación, ejecutar por iniciativa propia o usar `--all` sin que lo pida el usuario.
 - Nunca uses `permanentDelete`. Los únicos destinos son `deleteditems` (No deseados → Papelera), `junkemail` (Bandeja → No deseados) e `inbox` (rescate).
-- Promociones y boletines legítimos nunca se proponen para borrar ni para rescatar: se quedan en No deseados y quedan en REVISAR.
+- Promociones de dominios conocidos (historial de Bandeja 90 días, reglas `allow`, dominios oficiales de marca) y boletines legítimos nunca se proponen para borrar: se quedan en REVISAR. Una promo de dominio desconocido cuenta como señal débil (`promo de dominio desconocido`) y se propone para borrar sólo con una señal discriminante (auth fallida, TLD sospechoso, remitente aleatorio, reply-to distinto, marca suplantada con marca en el nombre, dominio nuevo) o con Clef fraude ≥ 0.70; urgencia, idioma y enlace ajeno nunca bastan solos.
 - `undo` y `feedback --rescue` no exigen `--code`: son por mensaje y reversibles; el código solo se exige para `purge`. Esta es una decisión deliberada, no un olvido.
 - Si Graph devuelve un error, repórtalo tal cual; no reintentes a ciegas.
 
