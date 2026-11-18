@@ -79,7 +79,7 @@ class RulesTest(unittest.TestCase):
         self.assertEqual(v.bucket, "review")
         self.assertIn("promo de dominio desconocido", v.reasons)
 
-    def test_promo_is_never_deleted_even_from_new_domain(self):
+    def test_unknown_promo_without_discriminating_signals_stays_review(self):
         v = self.verdict(fixtures.promo_newsletter())
         self.assertEqual(v.bucket, "review")
 

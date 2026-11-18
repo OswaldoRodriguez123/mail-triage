@@ -171,7 +171,9 @@ class RuleSet:
         urgent = _contains_any(haystack, self.urgency)
         foreign_language = ev.language not in ("es", "en", "unknown")
 
-        known_sender = bool(allowed) or (brand is not None and domain_has_brand)
+        known_sender = bool(allowed) or (
+            brand is not None and not brand_from_body and domain_has_brand
+        )
         promo_unknown = promo_hint and not known_sender
 
         if blocked and not allowed:
