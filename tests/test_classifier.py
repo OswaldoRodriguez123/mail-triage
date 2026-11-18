@@ -71,6 +71,23 @@ class ClassifierTest(unittest.TestCase):
         http = FakeHttp(HttpResponse(429, {"success": False}, ""))
         self.assertIsNone(ClefClient(http, "acct", "tok").evaluate(from_message(fixtures.soda_random())))
 
+    def test_clef_070_promotes_unknown_promo_to_delete(self):
+        v = Verdict(0.45, "review", ("promo de dominio desconocido",), False)
+        d = ClefDecision("promocion", 0.70, 0.05, {})
+        out = refine(v, d)
+        self.assertEqual(out.bucket, "delete")
+        self.assertIn("clef: fraude", out.reasons)
+
+    def test_clef_070_does_not_promote_known_promo(self):
+        v = Verdict(0.2, "review", ("promoción",), False)
+        d = ClefDecision("promocion", 0.95, 0.05, {})
+        self.assertEqual(refine(v, d).bucket, "review")
+
+    def test_clef_below_070_leaves_unknown_promo_in_review(self):
+        v = Verdict(0.45, "review", ("promo de dominio desconocido",), False)
+        d = ClefDecision("promocion", 0.69, 0.05, {})
+        self.assertEqual(refine(v, d).bucket, "review")
+
     def test_existing_delete_is_not_downgraded(self):
         d = ClefDecision("notificacion_legitima", 0.1, 0.9, {})
         self.assertEqual(refine(Verdict(1.0, "delete", (), True), d).bucket, "delete")
