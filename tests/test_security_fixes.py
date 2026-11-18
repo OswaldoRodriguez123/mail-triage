@@ -352,13 +352,11 @@ class GraphUrlGuardPortTest(unittest.TestCase):
 
 class KeychainStdinTest(unittest.TestCase):
     def test_secret_goes_to_the_writer_not_argv(self):
-        run = mock.Mock(return_value=mock.Mock(stdout=b"", stderr=b"", returncode=0))
         writer = mock.Mock()
-        store = MacKeychain(run=run, writer=writer)
+        store = MacKeychain(writer=writer)
         secret = "s" * 1400
         store.set("refresh-token", secret)
         writer.assert_called_once_with("mail-triage", "refresh-token", secret)
-        run.assert_not_called()
 
 
 if __name__ == "__main__":

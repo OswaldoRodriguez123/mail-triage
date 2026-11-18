@@ -18,17 +18,18 @@ class KeychainTest(unittest.TestCase):
         store.delete("refresh-token")
         self.assertIsNone(store.get("refresh-token"))
 
-    def test_mac_keychain_uses_security_cli(self):
-        run = mock.Mock(return_value=mock.Mock(stdout=b"secret\n", returncode=0))
-        store = MacKeychain(run=run)
+    def test_mac_keychain_reads_through_the_framework(self):
+        reader = mock.Mock(side_effect=[None, "secret"])
+        store = MacKeychain(reader=reader)
         self.assertEqual(store.get("refresh-token"), "secret")
-        args = run.call_args.args[0]
-        self.assertEqual(args[:3], ["security", "find-generic-password", "-s"])
-        self.assertIn("mail-triage", args)
+        self.assertEqual(
+            [call.args for call in reader.call_args_list],
+            [("mail-triage", "refresh-token"), ("correo-limpio", "refresh-token")],
+        )
 
     def test_mac_keychain_missing_returns_none(self):
-        run = mock.Mock(return_value=mock.Mock(stdout=b"", returncode=44))
-        self.assertIsNone(MacKeychain(run=run).get("refresh-token"))
+        store = MacKeychain(reader=mock.Mock(return_value=None))
+        self.assertIsNone(store.get("refresh-token"))
 
 
 class _FakeSecurity:
