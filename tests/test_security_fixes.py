@@ -351,14 +351,14 @@ class GraphUrlGuardPortTest(unittest.TestCase):
 
 
 class KeychainStdinTest(unittest.TestCase):
-    def test_secret_goes_via_stdin_not_argv(self):
+    def test_secret_goes_to_the_writer_not_argv(self):
         run = mock.Mock(return_value=mock.Mock(stdout=b"", stderr=b"", returncode=0))
-        store = MacKeychain(run=run)
-        store.set("refresh-token", "sekret-value-123")
-        args, kwargs = run.call_args
-        argv = args[0]
-        self.assertNotIn("sekret-value-123", argv)
-        self.assertEqual(kwargs.get("input"), b"sekret-value-123\nsekret-value-123\n")
+        writer = mock.Mock()
+        store = MacKeychain(run=run, writer=writer)
+        secret = "s" * 1400
+        store.set("refresh-token", secret)
+        writer.assert_called_once_with("mail-triage", "refresh-token", secret)
+        run.assert_not_called()
 
 
 if __name__ == "__main__":
