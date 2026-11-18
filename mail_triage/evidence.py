@@ -11,7 +11,7 @@ COMPOUND_SUFFIXES = frozenset({
 
 DEFAULT_BRANDS = frozenset("""
 netflix amazon paypal microsoft apple google facebook instagram whatsapp
-banco bbva santander hsbc citibanamex oxxo mercadolibre dhl fedex ups vivo
+bbva santander hsbc citibanamex oxxo mercadolibre dhl fedex ups vivo
 claro telcel medicare coinbase binance steam spotify disney uber rappi stripe
 """.split())
 

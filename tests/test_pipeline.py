@@ -226,6 +226,16 @@ class InboxAuditTest(unittest.TestCase):
         report, _ = self.scan_inbox()
         self.assertEqual(report.items, ())
 
+    def test_scan_inbox_does_not_delete_a_legit_newsletter_on_clef_alone(self):
+        class FraudClef:
+            def evaluate(self, ev):
+                return ClefDecision("fraude", 0.99, 0.01, {})
+
+        self.graph.messages = [fixtures.legit_store_newsletter()]
+        report, _ = scan_inbox(self.cfg, self.graph, self.store, self.rules, FraudClef())
+        self.assertEqual(report.items[0].bucket, "review")
+        self.assertIn("sólo señales débiles", report.items[0].reasons)
+
 
 if __name__ == "__main__":
     unittest.main()

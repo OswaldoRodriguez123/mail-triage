@@ -140,3 +140,14 @@ def coinbase_lookalike():
         "Tu cuenta sera suspendida. Verifica en https://coinbase-security.xyz/login",
         auth="spf=pass smtp.mailfrom=coinbase-security.xyz; dkim=pass; dmarc=pass header.from=coinbase-security.xyz",
     )
+
+
+def legit_store_newsletter():
+    return _msg(
+        "m_news",
+        "Nuestros precios mas bajos para tu hogar",
+        "IKEA",
+        "noreply@news.email.ikea.cl",
+        "Hola Oswaldo, revisa las ofertas de esta semana en https://www.ikea.cl/ofertas",
+        auth="spf=pass smtp.mailfrom=news.email.ikea.cl; dkim=pass; dmarc=pass header.from=news.email.ikea.cl",
+    )
