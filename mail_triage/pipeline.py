@@ -9,6 +9,14 @@ from mail_triage.report import ReportItem, build_report, save
 from mail_triage.rules import Verdict
 
 CLEF_SUMMARY = "{category} fraude={fraud:.2f} esperado={expected:.2f}"
+
+# Reasons strong enough to move Inbox mail to Junk. Weaker ones (foreign link,
+# urgency, Clef alone) leave the message in REVISAR.
+INBOX_DELETE_SIGNALS = (
+    "dominio bloqueado",
+    "marca suplantada desde dominio ajeno",
+    "fallo de autenticación",
+)
 CLEF_CACHE_RUNS = 4
 
 
@@ -140,6 +148,18 @@ def scan_inbox(
                     expected=decision.expected_prob,
                 )
                 verdict = refine(verdict, decision)
+        # In the Inbox, a numeric score is not enough: Clef alone calls almost
+        # every legit newsletter fraud, and moving real mail to Junk costs more
+        # than leaving a phish in REVISAR.
+        if verdict.bucket == "delete" and not any(
+            signal in verdict.reasons for signal in INBOX_DELETE_SIGNALS
+        ):
+            verdict = Verdict(
+                verdict.score,
+                "review",
+                verdict.reasons + ("sólo señales débiles",),
+                verdict.fraud_signal,
+            )
         items.append(
             ReportItem(
                 n=len(items) + 1,

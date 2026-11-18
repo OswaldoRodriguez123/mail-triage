@@ -123,6 +123,11 @@ class RulesTest(unittest.TestCase):
         self.assertIn("marca suplantada desde dominio ajeno", v.reasons)
         self.assertEqual(v.bucket, "delete")
 
+    def test_generic_bank_word_is_not_a_brand(self):
+        v = self.verdict(_fake_message("Banco Falabella", "contacto@cl.bancofalabella.com",
+                                       "Acompana a tus seres queridos", "Hola"))
+        self.assertNotIn("marca suplantada", v.reasons)
+
     def test_brand_only_in_body_is_review_with_body_reason(self):
         v = self.verdict(_fake_message("Notificaciones", "billing@mailer-service.com",
                                        "Tienes una recompensa pendiente",

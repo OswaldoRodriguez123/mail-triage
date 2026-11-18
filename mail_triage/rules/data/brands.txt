@@ -8,7 +8,6 @@ google
 facebook
 instagram
 whatsapp
-banco
 bbva
 santander
 hsbc
