@@ -82,23 +82,37 @@ class RuleSet:
         transactional = _contains_any(haystack, TRANSACTIONAL_WORDS)
 
         brand = ev.brand or find_brand(f"{ev.from_name} {ev.subject}", self.brands)
+        brand_from_body = False
+        if not brand:
+            body_haystack = f"{ev.text} {' '.join(ev.link_domains)}"
+            candidate = find_brand(body_haystack, self.brands)
+            if candidate and not is_brand_domain(
+                ev.from_domain, candidate, self.suffixes, self.tlds,
+                self.official_domains.get(candidate, ()),
+            ):
+                brand = candidate
+                brand_from_body = True
         brand_in_name = False
         domain_has_brand = True
         if brand:
             score += WEIGHTS["brand"]
             fraud_signal = True
-            reasons.append("marca suplantada")
-            # Brand claimed in display name but sent from an unrelated domain.
-            normalized_name = normalize_for_matching(ev.from_name or "").lower()
-            brand_in_name = find_brand(normalized_name, {brand}) is not None
-            domain_has_brand = is_brand_domain(
-                ev.from_domain, brand, self.suffixes, self.tlds,
-                self.official_domains.get(brand, ()),
+            reasons.append(
+                "marca mencionada en el cuerpo" if brand_from_body
+                else "marca suplantada"
             )
-            if brand_in_name and not domain_has_brand:
-                score += WEIGHTS["brand_mismatch"]
-                fraud_signal = True
-                reasons.append("marca suplantada desde dominio ajeno")
+            # Brand claimed in display name but sent from an unrelated domain.
+            if not brand_from_body:
+                normalized_name = normalize_for_matching(ev.from_name or "").lower()
+                brand_in_name = find_brand(normalized_name, {brand}) is not None
+                domain_has_brand = is_brand_domain(
+                    ev.from_domain, brand, self.suffixes, self.tlds,
+                    self.official_domains.get(brand, ()),
+                )
+                if brand_in_name and not domain_has_brand:
+                    score += WEIGHTS["brand_mismatch"]
+                    fraud_signal = True
+                    reasons.append("marca suplantada desde dominio ajeno")
 
         if ev.auth.failed:
             score += WEIGHTS["auth_fail"]

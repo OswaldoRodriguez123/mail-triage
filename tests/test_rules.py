@@ -123,5 +123,18 @@ class RulesTest(unittest.TestCase):
         self.assertIn("marca suplantada desde dominio ajeno", v.reasons)
         self.assertEqual(v.bucket, "delete")
 
+    def test_brand_only_in_body_is_review_with_body_reason(self):
+        v = self.verdict(_fake_message("Notificaciones", "billing@mailer-service.com",
+                                       "Tienes una recompensa pendiente",
+                                       "Reclama tu recompensa de Coinbase aqui: https://claim-reward.top/r"))
+        self.assertEqual(v.bucket, "review")
+        self.assertIn("marca mencionada en el cuerpo", v.reasons)
+
+    def test_brand_in_body_from_official_domain_is_not_penalized(self):
+        v = self.verdict(_fake_message("Notificaciones", "no-reply@coinbase.com",
+                                       "Novedades de la semana",
+                                       "Coinbase lanza una funcion nueva."))
+        self.assertNotIn("marca mencionada en el cuerpo", v.reasons)
+
 if __name__ == "__main__":
     unittest.main()
