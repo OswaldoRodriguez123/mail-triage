@@ -17,6 +17,9 @@ class MailProvider(Protocol):
     def list_junk(self, max_items, skip_ids) -> tuple[list[dict], bool]:
         ...
 
+    def list_inbox(self, lookback_days: int, max_items, skip_ids) -> tuple[list[dict], bool]:
+        ...
+
     def inbox_domains(self, lookback_days: int) -> set[str]:
         ...
 

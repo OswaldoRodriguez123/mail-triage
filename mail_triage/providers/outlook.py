@@ -20,6 +20,12 @@ class OutlookProvider:
         except GraphError as exc:
             raise ProviderError(exc.status, str(exc)) from exc
 
+    def list_inbox(self, lookback_days, max_items, skip_ids) -> tuple[list[dict], bool]:
+        try:
+            return self._graph.list_inbox(lookback_days, max_items, skip_ids)
+        except GraphError as exc:
+            raise ProviderError(exc.status, str(exc)) from exc
+
     def list_junk_senders(self, page_size: int = 100) -> list[dict]:
         try:
             return self._graph.list_junk_senders(page_size)
