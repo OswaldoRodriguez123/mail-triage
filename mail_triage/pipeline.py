@@ -6,6 +6,7 @@ from mail_triage.config import Config
 from mail_triage.evidence import from_message, registrable_domain
 from mail_triage.providers.base import INBOX
 from mail_triage.report import ReportItem, build_report, save
+from mail_triage.rules import Verdict
 
 CLEF_SUMMARY = "{category} fraude={fraud:.2f} esperado={expected:.2f}"
 CLEF_CACHE_RUNS = 4
@@ -78,6 +79,83 @@ def scan(
         )
 
     report, code = build_report(items, has_more, "clef" if clef_used else "rules", now=now, secret=secret)
+    save(report, Path(cfg.state_dir) / "runs")
+    for item in report.items:
+        store.record_seen(item.message_id, report.run_id, item.bucket, now_iso)
+    return report, code
+
+
+def scan_inbox(
+    cfg: Config,
+    graph,
+    store,
+    ruleset,
+    clef=None,
+    *,
+    max_items: int | None = None,
+    now: datetime | None = None,
+    secret: bytes | None = None,
+):
+    """Read-only audit of the Inbox: never moves mail, never trusts the Inbox itself."""
+    now = now or datetime.now(timezone.utc)
+    now_iso = now.isoformat(timespec="seconds")
+    store.mark_scan_day(now.date().isoformat(), now_iso)
+
+    skip = store.decided_ids() | store.reviewed_ids()
+    messages, has_more = graph.list_inbox(cfg.inbox_audit_days, max_items, skip)
+
+    messages = _dedupe(messages)
+    evidences = [from_message(message) for message in messages]
+    ages = _cached_domain_ages(store, evidences, now)
+
+    rules = store.rules()
+    allow_rules = {domain for domain, verdict in rules.items() if verdict == "allow"}
+    block_rules = {domain for domain, verdict in rules.items() if verdict == "block"}
+
+    items: list[ReportItem] = []
+    clef_used = False
+    for ev in evidences:
+        verdict = ruleset.evaluate(
+            ev,
+            allow_domains=allow_rules,
+            block_domains=block_rules,
+            domain_age_days=ages.get(ev.from_domain),
+        )
+        if verdict.bucket == "rescue":
+            verdict = Verdict(
+                verdict.score,
+                "review",
+                verdict.reasons + ("posible correo legitimo",),
+                verdict.fraud_signal,
+            )
+        clef_label = None
+        protected = _is_protected(verdict)
+        if verdict.bucket == "review" and clef is not None and not protected:
+            decision = _clef_decision(store, clef, ev, now)
+            if decision is not None:
+                clef_used = True
+                clef_label = CLEF_SUMMARY.format(
+                    category=decision.category,
+                    fraud=decision.fraud_prob,
+                    expected=decision.expected_prob,
+                )
+                verdict = refine(verdict, decision)
+        items.append(
+            ReportItem(
+                n=len(items) + 1,
+                message_id=ev.message_id,
+                subject=ev.subject,
+                sender=_sender(ev),
+                domain=ev.from_domain,
+                bucket=verdict.bucket,
+                score=verdict.score,
+                reasons=verdict.reasons,
+                clef=clef_label,
+            )
+        )
+
+    mode = "inbox+clef" if clef_used else "inbox"
+    report, code = build_report(items, has_more, mode, now=now, secret=secret)
     save(report, Path(cfg.state_dir) / "runs")
     for item in report.items:
         store.record_seen(item.message_id, report.run_id, item.bucket, now_iso)
@@ -173,6 +251,18 @@ def _domain_ages(store, rdap, evidences, now: datetime) -> dict[str, int | None]
         ages[domain] = age
         created_date = (today - timedelta(days=age)).isoformat() if age is not None else None
         store.cache_domain_age(domain, created_date, now.isoformat(timespec="seconds"))
+    return ages
+
+
+def _cached_domain_ages(store, evidences, now: datetime) -> dict[str, int | None]:
+    today = now.date()
+    ages: dict[str, int | None] = {}
+    for ev in evidences:
+        domain = ev.from_domain
+        if not domain or domain in ages:
+            continue
+        created, checked = store.get_domain_age(domain)
+        ages[domain] = _days_since(created, today) if (created or checked) else None
     return ages
 
 

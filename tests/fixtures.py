@@ -129,3 +129,14 @@ def sanitized_receipt():
         auth="spf=pass smtp.mailfrom=store.test; dkim=pass; dmarc=pass header.from=store.test",
         has_attachments=True,
     )
+
+
+def coinbase_lookalike():
+    return _msg(
+        "m_coin",
+        "Accion requerida: verifica tu cuenta",
+        "Coinbase",
+        "no-reply@coinbase-security.xyz",
+        "Tu cuenta sera suspendida. Verifica en https://coinbase-security.xyz/login",
+        auth="spf=pass smtp.mailfrom=coinbase-security.xyz; dkim=pass; dmarc=pass header.from=coinbase-security.xyz",
+    )

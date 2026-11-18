@@ -4,7 +4,7 @@ from tempfile import TemporaryDirectory
 
 from mail_triage.classifier import ClefDecision
 from mail_triage.config import Config
-from mail_triage.pipeline import rescue_allowed, scan
+from mail_triage.pipeline import rescue_allowed, scan, scan_inbox
 from mail_triage.rules import RuleSet
 from tests import fixtures
 
@@ -28,6 +28,12 @@ class FakeGraph:
 
     def inbox_domains(self, lookback_days):
         return set()
+
+    def list_inbox(self, lookback_days, max_items, skip_ids):
+        selected = [m for m in self.messages if m["id"] not in skip_ids]
+        if max_items:
+            selected = selected[:max_items]
+        return selected, False
 
     def move(self, message_id, destination):
         self.moves.append((message_id, destination))
@@ -180,6 +186,45 @@ class PipelineTest(unittest.TestCase):
         ]
         self.assertEqual(rescue_allowed(self.graph, self.store), [])
         self.assertEqual(self.graph.moves, [])
+
+
+class InboxAuditTest(unittest.TestCase):
+    def setUp(self):
+        self.tmp = TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.root = Path(self.tmp.name)
+        self.cfg = Config(self.root / "config", self.root / "state", client_id="cid")
+        self.rules = RuleSet.load(DATA)
+        self.graph = FakeGraph([])
+        self.store = FakeStore()
+        self.clef = FakeClef()
+
+    def scan_inbox(self, **kwargs):
+        return scan_inbox(self.cfg, self.graph, self.store, self.rules, self.clef, **kwargs)
+
+    def test_scan_inbox_marks_lookalike_coinbase_for_junk(self):
+        self.graph.messages = [fixtures.coinbase_lookalike()]
+        report, _ = self.scan_inbox()
+        self.assertEqual(report.mode, "inbox")
+        self.assertEqual(report.items[0].bucket, "delete")
+        self.assertEqual(self.graph.moves, [])
+
+    def test_scan_inbox_does_not_trust_senders_already_in_inbox(self):
+        self.graph.inbox_domains = lambda days: {"coinbase-security.xyz"}
+        self.graph.messages = [fixtures.coinbase_lookalike()]
+        report, _ = self.scan_inbox()
+        self.assertEqual(report.items[0].bucket, "delete")
+
+    def test_scan_inbox_turns_rescue_into_review(self):
+        self.graph.messages = [fixtures.sanitized_receipt()]
+        report, _ = self.scan_inbox()
+        self.assertEqual(report.items[0].bucket, "review")
+
+    def test_scan_inbox_skips_reviewed(self):
+        self.store.seen["m_coin"] = "review"
+        self.graph.messages = [fixtures.coinbase_lookalike()]
+        report, _ = self.scan_inbox()
+        self.assertEqual(report.items, ())
 
 
 if __name__ == "__main__":
