@@ -18,6 +18,11 @@ SECTION_TITLES = {
     "review": "REVISAR",
 }
 
+INBOX_SECTION_TITLES = {
+    "delete": "MOVER A NO DESEADOS",
+    "review": "REVISAR",
+}
+
 
 @dataclass(frozen=True)
 class ReportItem:
@@ -88,12 +93,13 @@ def render(report: RunReport) -> str:
         f"Corrida {report.run_id} · modo {report.mode}",
         f"Válido hasta {report.expires_at.strftime('%Y-%m-%d %H:%M UTC')}",
     ]
-    for bucket in ("delete", "rescue", "review"):
+    titles = INBOX_SECTION_TITLES if report.mode.startswith("inbox") else SECTION_TITLES
+    for bucket, title in titles.items():
         group = [item for item in report.items if item.bucket == bucket]
         if not group:
             continue
         lines.append("")
-        lines.append(f"{SECTION_TITLES[bucket]} ({len(group)})")
+        lines.append(f"{title} ({len(group)})")
         for item in group:
             lines.append(
                 f"  {item.n}. [{item.score:.2f}] {item.sender} · {item.domain}"
