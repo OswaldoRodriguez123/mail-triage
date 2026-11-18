@@ -36,7 +36,12 @@ REVISAR (2)
 ```
 
 - **Only fraud and scams get deleted**: impersonation, phishing, scams and
-  malicious links. Legitimate promotions and newsletters are never deleted.
+  malicious links. Promotions from known senders (domains in your Inbox
+  history, or official brand domains) and newsletters are never deleted;
+  a promotion from an unknown domain is a weak spam signal and is deleted
+  only with an additional discriminating signal (auth failure, suspicious
+  TLD, random sender, mismatching reply-to, brand mismatch, new domain) or
+  with Clef fraude ≥ 0.70.
 - **Legit-looking mail is rescued to the Inbox**, such as a receipt or a
   notification the user is actually waiting for.
 - **Doubtful mail stays**: it goes to `REVIEW` with its reason.
